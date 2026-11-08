@@ -60,13 +60,15 @@ const CONFIG = {
     ],
     lowHp: ['快不行了吧？乖乖交出時鐘！', '哼，壽星也會被排擠喔～'],
     bigGun: ['什麼！你哪來那種武器！', '犯規！群組禁止帶槍！'],
-    ult: ['你、你敢暫停我的時間？！', '時間是我的！還來！'],
+    skill: ['有錢了不起喔？！', '居然用錢買技能！犯規！', '撿我的錢還敢用！'],
     kills: ['才排擠掉幾個而已，群組還有 87 人！', '一群廢物……'],
     boss: ['你逃不掉的！', '我要過生日！！', '把鐘交出來！', '群主說話你聽到沒！'],
     tubbies: '出來吧！丁丁、拉拉、小波！一起排擠他！',
     rage: '我只差一秒啊！！！',
   },
   endingMessage: '迪西 & 巧馨 生日快樂！🎂',
+  /* 迪西撿到錢時跳出來的開心對話 */
+  heroLines: { cash: ['超爽的撿到100塊！', '超爽的撿到100塊！', '超爽的撿到100塊！', '100塊！今天發財啦！', '撿到錢錢～壽星福利！'] },
   difficulty: {
     easy: { label: '🎂 壽星模式', desc: '簡單・死掉可從本階段重來', playerHp: 150, enemyHp: 0.8, enemyDmg: 0.6, spawn: 0.75, bossHp: 1100, checkpoint: true },
     hard: { label: '😈 排擠模式', desc: '困難・死掉從頭開始',       playerHp: 100, enemyHp: 1.2, enemyDmg: 1.0, spawn: 1.2,  bossHp: 1800, checkpoint: false },
@@ -286,7 +288,8 @@ const Sprites = {
     if (!b) throw new Error('未定義的 sprite: ' + key);
     if (variant === 'normal') return b;
     const ck = key + '|' + variant;
-    return this.cache[ck] || (this.cache[ck] = variantOf(b, variant));
+    if (this.cache[ck]) return this.cache[ck];
+    try { return (this.cache[ck] = variantOf(b, variant)); } catch (e) { return (this.cache[ck] = b); }   // file:// 開啟時圖片無法讀像素，就直接用原圖
   },
   draw(ctx, key, x, y, scale = PIXEL, variant = 'normal', flipX = false) {
     const img = this.get(key, variant), w = img.width * scale, h = img.height * scale;
@@ -525,6 +528,25 @@ function paintCake() {
   [[16, 2], [22, 1], [28, 2]].forEach(([x, y]) => { p.rect(x - 1, y - 4, 2, 6, '#6ec6ff'); p.rect(x - 1, y - 4, 1, 6, '#b8e4ff'); p.ellipse(x, y - 6, 1.2, 1.8, '#ff9a3c'); p.px(x - 1, y - 6, '#fff36b'); });
   p.outline(); return p.toCanvas();
 }
+/* 新台幣 100 元鈔票（紅色） */
+function paintCash() {
+  const p = new Painter(30, 18, 1, 1);
+  p.rrectS(0, 0, 27, 15, 2, ramp('#e0524a'));
+  p.rect(2, 2, 23, 1, '#ffb4a4'); p.rect(2, 12, 23, 1, '#b8302a');
+  p.ellipseS(7, 7.5, 4, 4, ramp('#f6a090')); p.circle(7, 7.5, 1.6, '#c8402a');
+  p.outlineAuto(0.5);
+  const c = p.toCanvas(), x = c.getContext('2d');
+  drawPixelText(x, '100', 14, 5, 1, '#6a0e0a');
+  return c;
+}
+function paintSkillIcon(id) {
+  const p = new Painter(20, 20, 1, 1);
+  if (id === 'speed') p.polyS([[10, 0], [3, 10], [8, 10], [5, 18], [15, 7], [10, 7], [13, 0]], ramp('#ffd23f'));
+  else if (id === 'giant') { p.polyS([[9, 0], [18, 8], [13, 8], [13, 17], [5, 17], [5, 8], [0, 8]], ramp('#ff9a3c')); p.rect(7, 10, 4, 1, '#fff0c0'); }
+  else { p.ellipseS(8, 11, 7, 7, ['#101018', '#26263a', '#3a3a52', '#5a5a78', '#9a9ab8']); p.capsuleS(12, 5, 15, 2, 1, R_BROWN); p.ellipse(16.5, 1.5, 1.8, 1.8, '#ffd23f'); p.px(17, 1, '#ffffff'); }
+  p.outlineAuto(0.5);
+  return p.toCanvas();
+}
 function paintHat() {
   const p = new Painter(11, 11, 1, 1);
   p.poly([[4.5, 0], [8.8, 8.5], [0.2, 8.5]], '#ff4f8b');
@@ -651,6 +673,8 @@ function buildSprites() {
   Sprites.add('moon', paintMoon());
   Sprites.add('crate', paintCrate(false));
   Sprites.add('crate_broken', paintCrate(true));
+  Sprites.add('cash', paintCash());
+  for (const id of ['speed', 'giant', 'bomb']) Sprites.add('sk_' + id, paintSkillIcon(id));
   for (const [k, s] of Object.entries(ICONS)) Sprites.add(k, rowsToCanvas(s.rows, s.pal));
 }
 
@@ -982,6 +1006,9 @@ const SFX = {
   pickupGun: a => { a.arp([67, 74, 79, 86], 0.05); a.noise({ dur: 0.05, vol: 0.15, filter: 'highpass', ff: 3000, delay: 0.2 }); },
   cutin: a => { a.tone({ freq: 1320, dur: 0.08, type: 'sine', vol: 0.18 }); a.tone({ freq: 1760, dur: 0.12, type: 'sine', vol: 0.18, delay: 0.09 }); },
   stomp: a => { a.tone({ freq: 80, freqEnd: 35, dur: 0.35, type: 'sine', vol: 0.5 }); a.noise({ dur: 0.25, vol: 0.3, ff: 500 }); },
+  coin: a => { a.tone({ freq: 1975, dur: 0.07, type: 'square', vol: 0.12 }); a.tone({ freq: 2637, dur: 0.18, type: 'square', vol: 0.12, delay: 0.07 }); },
+  skill: a => { a.arp([60, 67, 72, 79, 84], 0.05, { type: 'square', vol: 0.16 }); a.noise({ dur: 0.3, vol: 0.15, filter: 'highpass', ff: 2000, delay: 0.1 }); },
+  pop: a => { a.noise({ dur: 0.25, vol: 0.18, ff: 1500, ffEnd: 200 }); a.tone({ freq: 700 + Math.random() * 600, freqEnd: 200, dur: 0.3, type: 'sine', vol: 0.06 }); },
   throwBall: a => a.tone({ freq: 300, freqEnd: 600, dur: 0.12, type: 'triangle', vol: 0.15 }),
   click: a => a.tone({ freq: 900, dur: 0.03, vol: 0.08 }),
 };
@@ -1047,7 +1074,7 @@ function measureSafe() {
 const JOY_R = 60;
 const Input = {
   keys: new Set(), mouse: { x: 0, y: 0, down: false, seen: false }, touch: PARAMS.touch,
-  joy: null, fire: null, ultTap: false, swapTap: false, pendingFire: null, btn: {},
+  joy: null, fire: null, skillTap: null, swapTap: false, pendingFire: null, btn: {},
   init() {
     const opt = { passive: false };
     canvas.addEventListener('pointerdown', e => this.down(e), opt);
@@ -1068,10 +1095,14 @@ const Input = {
   layout() {
     const s = Safe, w = view.w, h = view.h, R = clamp(Math.min(w, h) * 0.11, 40, 54);
     const fire = { x: w - s.r - R - 28, y: h - s.b - R - 28, r: R };
+    // 技能鈕沿著拉炮鈕排成弧形：炸彈（左）、巨大化、加速、切換武器（上）
+    const ring = R * 1.95, sr = R * 0.6, at = deg => ({ x: fire.x + Math.cos(deg * Math.PI / 180) * ring, y: fire.y - Math.sin(deg * Math.PI / 180) * ring, r: sr });
+    const dw = 62, dx0 = w - s.r - 16 - dw * 3 - 12, dy0 = h - s.b - 16 - dw;
     this.btn = {
       fire,
-      ult: { x: fire.x - R * 2.05, y: fire.y - R * 0.45, r: R * 0.78 },
-      swap: { x: fire.x - R * 0.2, y: fire.y - R * 2.05, r: R * 0.64 },
+      skills: { bomb: at(180), giant: at(140), speed: at(103) },
+      desk: { speed: { x: dx0, y: dy0, w: dw, h: dw }, giant: { x: dx0 + dw + 6, y: dy0, w: dw, h: dw }, bomb: { x: dx0 + (dw + 6) * 2, y: dy0, w: dw, h: dw } },
+      swap: at(66),
       pause: { x: w - s.r - 30, y: s.t + 30, r: 20 }, mute: { x: w - s.r - 78, y: s.t + 30, r: 20 },
     };
   },
@@ -1088,8 +1119,11 @@ const Input = {
     const b = this.btn;
     if (this.inBtn(b.pause, x, y)) { st.togglePause(); return; }
     if (this.inBtn(b.mute, x, y)) { Snd.setMute(!Snd.muted); return; }
-    if (!touch) { if (e.button === 2) this.ultTap = true; else this.mouse.down = true; return; }
-    if (this.inBtn(b.ult, x, y)) { this.ultTap = true; return; }
+    if (!touch) {
+      for (const id of SKILL_ORDER) { const r = b.desk[id]; if (x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h) { this.skillTap = id; return; } }
+      if (e.button === 2) this.skillTap = 'bomb'; else this.mouse.down = true; return;
+    }
+    for (const id of SKILL_ORDER) if (this.inBtn(b.skills[id], x, y, 4)) { this.skillTap = id; return; }
     if (this.inBtn(b.swap, x, y, 4)) { this.swapTap = true; return; }
     if (x < view.w * 0.45 && !this.joy) this.joy = { id: e.pointerId, ox: x, oy: y, x, y };
     else if (!this.fire) this.fire = { id: e.pointerId, sx: x, sy: y, x, y, manual: false, t: 0, fired: false };
@@ -1282,15 +1316,50 @@ function compact(arr) { let j = 0; for (let i = 0; i < arr.length; i++) if (arr[
  * §6 Entities —— 世界、玩家、敵人、子彈、掉落物、粒子
  * ===================================================================== */
 const CH_SCALE = 1.5, BOSS_SCALE = 1.5;
+/* 小怪改用 npc/ 資料夾的圖片角色；圖片還沒載入或載入失敗時，自動退回程式畫的手機臉群友 */
+const NPC_SKINS = {
+  mob: ['bird', 'mosquito', 'squirtle', 'chef', 'patrick', 'spongebob', 'usagi', 'pikachu', 'krabs', 'totoro', 'bully1', 'bully2', 'bully3', 'bully4'],
+  shooter: ['jiang_shoot', 'jiang_crouch'],
+  charger: ['beast', 'jiang_banana'],
+  chaser: ['goku', 'wojiulan'],
+};
+const NPC_FILES = { bird: ['bird_1', 'bird_2'] };          // 多張圖 = 動畫影格
+const NPC_FLY = new Set(['bird', 'mosquito']);              // 會飛：浮在空中、影子較小
+const NPC_H = { mob: 76, shooter: 84, charger: 110, chaser: 82 };   // 遊戲中的高度（世界單位）
+const NPC = {
+  ready: {},
+  load() {
+    const ids = new Set(Object.values(NPC_SKINS).flat());
+    for (const id of ids) {
+      const files = NPC_FILES[id] || [id]; let n = 0;
+      files.forEach((f, i) => {
+        const im = new Image();
+        im.onload = () => { const c = makeCanvas(im.width, im.height); c.getContext('2d').drawImage(im, 0, 0); Sprites.add(`npc_${id}_${i}`, c); if (++n === files.length) this.ready[id] = files.length; };
+        im.src = 'npc/' + f + '.png';
+      });
+    }
+  },
+};
+/* 在 (cx, footY) 畫一個圖片角色，回傳頭頂 y */
+function drawNpcSkin(skin, cx, footY, height, opts = {}) {
+  const fr = NPC.ready[skin], key = `npc_${skin}_${fr > 1 ? Math.floor(Game.t * 8 + (opts.ph || 0)) % fr : 0}`, z = Sprites.size(key);
+  const k = height / z.h, wdt = z.w * k, hgt = z.h * k;
+  ctx.save(); ctx.translate(cx, footY); if (opts.tilt) ctx.rotate(opts.tilt); if (opts.flip) ctx.scale(-1, 1);
+  if (opts.alpha !== undefined) ctx.globalAlpha *= opts.alpha;
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(Sprites.get(key, opts.variant || 'normal'), -wdt / 2, -hgt, wdt, hgt);
+  ctx.imageSmoothingEnabled = false; ctx.restore();
+  return footY - hgt;
+}
 const ENEMY = {
-  mob:     { hp: 20, speed: 95,  r: 16, dmg: 10, scale: 1.3, sprites: ['mob_green', 'mob_blue', 'mob_orange'], spring: 10, pSpring: 0.4, pHeart: 0.05, pWeapon: 0 },
-  shooter: { hp: 16, speed: 85,  r: 16, dmg: 8,  scale: 1.3, sprites: ['shooter'], spring: 10, pSpring: 0.5, pHeart: 0.08, pWeapon: 0.04 },
-  charger: { hp: 80, speed: 80,  r: 24, dmg: 20, scale: 1.7, sprites: ['charger'], spring: 30, pSpring: 0.55, pHeart: 0.2, pWeapon: 0.18, elite: true },
-  chaser:  { hp: 40, speed: 175, r: 16, dmg: 12, scale: 1.3, sprites: ['chaser'], spring: 30, pSpring: 0.5, pHeart: 0.15, pWeapon: 0.15, elite: true },
+  mob:     { hp: 20, speed: 95,  r: 16, dmg: 10, scale: 1.3, sprites: ['mob_green', 'mob_blue', 'mob_orange'], cash: 1, pCash: 0.65, pHeart: 0.05, pWeapon: 0 },
+  shooter: { hp: 16, speed: 85,  r: 16, dmg: 8,  scale: 1.3, sprites: ['shooter'], cash: 1, pCash: 0.7, pHeart: 0.08, pWeapon: 0.04 },
+  charger: { hp: 80, speed: 80,  r: 24, dmg: 20, scale: 1.7, sprites: ['charger'], cash: 3, pCash: 0.9, pHeart: 0.2, pWeapon: 0.18, elite: true },
+  chaser:  { hp: 40, speed: 175, r: 16, dmg: 12, scale: 1.3, sprites: ['chaser'], cash: 2, pCash: 0.85, pHeart: 0.15, pWeapon: 0.15, elite: true },
   // 巧馨第二階段召喚的天線寶寶三人組
-  tinky:   { hp: 180, speed: 70,  r: 22, dmg: 18, scale: 1.25, sprites: ['tinky'], spring: 30, pSpring: 0.3, pHeart: 0.3, pWeapon: 0.6, elite: true, tubby: true, name: '丁丁' },
-  laa:     { hp: 110, speed: 90,  r: 20, dmg: 12, scale: 1.25, sprites: ['laa'],   spring: 30, pSpring: 0.3, pHeart: 0.3, pWeapon: 0.6, elite: true, tubby: true, name: '拉拉' },
-  po:      { hp: 90,  speed: 150, r: 20, dmg: 16, scale: 1.25, sprites: ['po'],    spring: 30, pSpring: 0.3, pHeart: 0.3, pWeapon: 0.6, elite: true, tubby: true, name: '小波' },
+  tinky:   { hp: 180, speed: 70,  r: 22, dmg: 18, scale: 1.25, sprites: ['tinky'], cash: 5, pCash: 1, pHeart: 0.3, pWeapon: 0.6, elite: true, tubby: true, name: '丁丁' },
+  laa:     { hp: 110, speed: 90,  r: 20, dmg: 12, scale: 1.25, sprites: ['laa'],   cash: 5, pCash: 1, pHeart: 0.3, pWeapon: 0.6, elite: true, tubby: true, name: '拉拉' },
+  po:      { hp: 90,  speed: 150, r: 20, dmg: 16, scale: 1.25, sprites: ['po'],    cash: 5, pCash: 1, pHeart: 0.3, pWeapon: 0.6, elite: true, tubby: true, name: '小波' },
 };
 
 /* =====================================================================
@@ -1332,6 +1401,7 @@ function newWorld(diffKey) {
     boss: null, timeStop: 0, shake: 0, spawnT: 2.5, kills: 0, banner: null, overlay: null, deathT: 0, flashT: 0, ebCount: 0,
     lastKnown: { x: WORLD_W / 2, y: WORLD_H / 2 }, checkpoint: null, clearTime: 0, lowFx: false, vBell: 0, songStarted: false, songLen: 0,
     cutin: null, cutinCd: 0, cutinIdx: 0, lowHpCd: 0, supplyT: 14, bossTauntT: 12,
+    cashT: 2, tip: null, cashTip: false, heroCd: 4, skillTips: {},
   };
   P = makePlayer(diff);
   saveCheckpoint();
@@ -1339,15 +1409,14 @@ function newWorld(diffKey) {
 function makePlayer(d) {
   return { x: WORLD_W / 2, y: WORLD_H / 2, r: 18, hp: d.playerHp, maxHp: d.playerHp, speed: 260, ammo: 3, reload: 0, fireCd: 0, ult: 0,
     invuln: 0, flash: 0, hidden: false, reveal: 0, face: 1, walkT: 0, moving: false, dead: false, aim: null, aimAuto: false,
-    special: null, cur: 'pistol', recoil: 0 };
+    special: null, cur: 'pistol', recoil: 0, money: 0, speedT: 0, giantT: 0, grow: 0 };
 }
-function saveCheckpoint() { W.checkpoint = { stage: W.stage, time: W.time, ult: P ? P.ult : 0 }; }
+function saveCheckpoint() { W.checkpoint = { stage: W.stage, time: W.time, money: P ? P.money : 0 }; }
 function restoreCheckpoint() {
   const cp = W.checkpoint;
-  const ult = cp.ult;
-  P = makePlayer(W.diff); P.ult = ult; P.invuln = 1.5;
+  P = makePlayer(W.diff); P.money = cp.money || 0; P.invuln = 1.5;
   Object.assign(W, { enemies: [], bullets: [], drops: [], parts: [], texts: [], cakes: [], booms: [], beams: [], flashes: [], boss: null, timeStop: 0,
-    overlay: null, deathT: 0, flashT: 0, banner: null, cutin: null, cutinCd: 3, lock: null,
+    overlay: null, deathT: 0, flashT: 0, banner: null, cutin: null, cutinCd: 3, lock: null, tip: null, cashT: 2,
     time: cp.time, stage: cp.stage, stageT: 0, spawnT: 1.5, supplyT: 6, lastKnown: { x: P.x, y: P.y } });
   W.cutinIdx = CONFIG.cutins.timed.findIndex(c => c[0] > cp.time); if (W.cutinIdx < 0) W.cutinIdx = CONFIG.cutins.timed.length;
   Cam.snap = true;
@@ -1364,14 +1433,15 @@ function startPlay(diffKey, phase) {
 
 /* ---------- 巧馨插話（畫面側邊滑入的叫囂對話框） ---------- */
 function cutin(text, force, rage) {
-  if (!W || (W.cutinCd > 0 && !force) || P.dead) return;
+  if (!W || (W.cutinCd > 0 && !force && !(W.cutin && W.cutin.who === 'hero')) || P.dead) return;
   W.cutin = { text, t: 0, dur: 3.2, rage: !!rage };
   W.cutinCd = 7;
   Snd.play('cutin');
 }
 function updateCutins(dt) {
-  W.cutinCd -= dt; W.lowHpCd -= dt;
+  W.cutinCd -= dt; W.lowHpCd -= dt; W.heroCd -= dt;
   if (W.cutin) { W.cutin.t += dt; if (W.cutin.t > W.cutin.dur) W.cutin = null; }
+  if (W.tip) { W.tip.t += dt; if (W.tip.t > W.tip.dur) W.tip = null; }
   const C = CONFIG.cutins;
   if ((W.stage === 'p1' || W.stage === 'p2') && W.cutinIdx < C.timed.length && W.time >= C.timed[W.cutinIdx][0]) { cutin(C.timed[W.cutinIdx][1], true); W.cutinIdx++; }
   if (W.stage === 'boss') { W.bossTauntT -= dt; if (W.bossTauntT <= 0) { W.bossTauntT = 14; cutin(pick(C.boss), false, W.boss && W.boss.stage === 3); } }
@@ -1400,13 +1470,13 @@ function shoot(team, x, y, ang, o) {
     pierce: o.pierce || 0, hits: o.pierce ? [] : null, knock: o.knock || 140, blast: o.blast || 0, blastDmg: o.blastDmg || 0, bounce: o.bounce || 0, color: o.color });
   if (team === 'enemy') W.ebCount++;
 }
-function explode(x, y, r, dmg) {
+function explode(x, y, r, dmg, bossDmg = dmg) {
   W.booms.push({ x, y, r, t: 0, alive: true });
   burst(x, y, 26, { cols: ['#ffd23f', '#ff9a3c', '#ff5a2a', '#fff3b0'], size: 8, speed: 380, life: 0.5, grav: 0, round: true });
   burst(x, y, 10, { cols: ['#6a5a4a', '#8a7a6a'], size: 10, speed: 120, life: 0.9, grav: -60, round: true });
   W.shake = Math.max(W.shake, 12); Snd.play('boom');
   for (const e of W.enemies) if (e.alive && Math.hypot(e.x - x, e.y - y) < r + e.r) damageEnemy(e, dmg, null, x, y);
-  const b = W.boss; if (b && b.active && Math.hypot(b.x - x, b.y - y) < r + b.r) damageBoss(dmg);
+  const b = W.boss; if (b && b.active && Math.hypot(b.x - x, b.y - y) < r + b.r) damageBoss(bossDmg);
   const t0x = Math.floor((x - r) / TILE), t1x = Math.floor((x + r) / TILE), t0y = Math.floor((y - r) / TILE), t1y = Math.floor((y + r) / TILE);
   for (let ty = t0y; ty <= t1y; ty++) for (let tx = t0x; tx <= t1x; tx++)
     if (Arena.type(tx, ty) === T_CRATE && Math.hypot((tx + 0.5) * TILE - x, (ty + 0.5) * TILE - y) < r + 20 && Arena.hitCrate(tx, ty, 40)) crateBroken(tx, ty);
@@ -1510,7 +1580,7 @@ function updateDrops(dt) {
       d.alive = false;
       if (d.kind === 'heart') { P.hp = Math.min(P.maxHp, P.hp + 25); floatText(P.x, P.y - 70, '+25', '#ff6a8a'); Snd.play('heart'); }
       else if (d.kind === 'weapon') pickupWeapon(d.v);
-      else { P.ult = Math.min(100, P.ult + d.v); floatText(P.x, P.y - 70, '⏱+' + d.v, '#7fd0ff', 16); Snd.play('spring'); }
+      else pickupCash(d.v);
     }
   }
   compact(W.drops);
@@ -1527,12 +1597,73 @@ function supplyDrop() {
     return;
   }
 }
+/* ---------- 新台幣 100 元：撿起來存錢，可換技能 ---------- */
+function dropCash(x, y, n) {
+  for (let i = 0; i < n; i++) addDrop('cash', x + (Math.random() - 0.5) * (n > 1 ? 56 : 0), y + (Math.random() - 0.5) * (n > 1 ? 40 : 0), 100);
+}
+function pickupCash(v) {
+  P.money += v;
+  floatText(P.x, P.y - 74, '+$' + v, '#ffd23f', 17);
+  Snd.play('coin');
+  if (!W.cashTip) { W.cashTip = true; showTip('💰 撿到新台幣 100 元！存起來可以換技能：⚡加速 $500・💪巨大化 $800・💣炸彈 $1200', 6); }
+  else if (W.heroCd <= 0 && Math.random() < 0.35) { heroSay(pick(CONFIG.heroLines.cash)); W.heroCd = 9; }
+  for (const id of SKILL_ORDER) {
+    const sk = SKILLS[id];
+    if (P.money >= sk.cost && !W.skillTips[id]) { W.skillTips[id] = true; showTip(`💰 存到 $${sk.cost} 了！現在可以按「${sk.emoji}${sk.name}」`, 3.5); break; }
+  }
+}
+/* 地上定時冒出新台幣（數量比照使用者要求增加） */
+function spawnAmbientCash() {
+  if (W.drops.filter(d => d.kind === 'cash').length >= 10) return;
+  for (let tries = 0; tries < 20; tries++) {
+    const a = Math.random() * Math.PI * 2, r = 160 + Math.random() * 300, x = P.x + Math.cos(a) * r, y = P.y + Math.sin(a) * r;
+    const tx = Math.floor(x / TILE), ty = Math.floor(y / TILE);
+    if (Arena.type(tx, ty) !== T_FLOOR) continue;
+    addDrop('cash', x, y, 100);
+    burst(x, y, 6, { cols: ['#ffd23f', '#fff3b0'], size: 3, speed: 80, life: 0.4, grav: 0 });
+    return;
+  }
+}
+function showTip(text, dur = 4) { W.tip = { text, t: 0, dur }; }
+function heroSay(text) {
+  if (W.cutin && W.cutin.who !== 'hero') return;      // 巧馨正在說話時不搶話
+  W.cutin = { text, t: 0, dur: 2.4, who: 'hero' };
+}
+
+/* ---------- 用錢換的技能（取代原本的時間暫停） ---------- */
+const SKILLS = {
+  speed: { name: '加速', emoji: '⚡', cost: 500, dur: 6, color: '#3fb8ff', key: '1', desc: '移動速度 ×1.7・射速提升（6 秒）' },
+  giant: { name: '巨大化', emoji: '💪', cost: 800, dur: 8, color: '#ff8a2a', key: '2', desc: '身體變大・火力 ×1.8・受傷減半・撞飛敵人（8 秒）' },
+  bomb:  { name: '炸彈', emoji: '💣', cost: 1200, color: '#e8402a', key: '3', desc: '以迪西為中心大爆炸，清除敵方子彈' },
+};
+const SKILL_ORDER = ['speed', 'giant', 'bomb'];
+function useSkill(id) {
+  const sk = SKILLS[id];
+  if (!canAct()) return;
+  if (P.money < sk.cost) { floatText(P.x, P.y - 100, `還差 $${sk.cost - P.money}`, '#fff', 15); Snd.play('empty'); return; }
+  P.money -= sk.cost;
+  Snd.play('skill');
+  if (id === 'speed') P.speedT = sk.dur;
+  else if (id === 'giant') { P.giantT = sk.dur; W.shake = Math.max(W.shake, 8); }
+  else megaBomb();
+  banner(`${sk.emoji} ${sk.name}！`, sk.desc, 1.6);
+  if (Math.random() < 0.6) setTimeout(() => { if (W && Game.stateName === 'PLAY') cutin(pick(CONFIG.cutins.skill)); }, 900);
+}
+function megaBomb() {
+  const R = 360;
+  clearEnemyBullets();
+  explode(P.x, P.y - 20, R, 140, 90);   // 對巧馨只造成 90，避免連丟炸彈秒殺 Boss
+  for (let i = 1; i <= 3; i++) W.booms.push({ x: P.x, y: P.y - 20, r: R * (0.45 + i * 0.25), t: -i * 0.09, alive: true });
+  burst(P.x, P.y - 20, 40, { cols: ['#ffd23f', '#ff9a3c', '#ff5a2a', '#ffffff'], size: 9, speed: 600, life: 0.6, grav: 0, round: true });
+  W.flashT = 0.35; W.shake = 26; P.invuln = Math.max(P.invuln, 0.6);
+}
 function crateBroken(tx, ty) {
   const x = (tx + 0.5) * TILE, y = (ty + 0.5) * TILE;
   burst(x, y, 16, { cols: ['#c98a4b', '#8f5a2b', '#e8b070', '#ff4f8b'], size: 6, up: 120 });
   Snd.play('crate'); W.shake = Math.max(W.shake, 3);
   const r = Math.random();
-  if (r < 0.35) addDrop('heart', x, y, 25); else if (r < 0.55) addDrop('spring', x, y, 10); else if (r < 0.77) addDrop('weapon', x, y, pickWeapon());
+  if (r < 0.3) addDrop('heart', x, y, 25); else if (r < 0.52) addDrop('weapon', x, y, pickWeapon());
+  if (Math.random() < 0.75) dropCash(x, y, Math.random() < 0.4 ? 2 : 1);
 }
 
 /* ---------- 玩家 ---------- */
@@ -1540,7 +1671,7 @@ function canAct() { return (W.stage === 'p1' || W.stage === 'p2' || W.stage === 
 function hurtPlayer(dmg) {
   if (P.dead || P.invuln > 0 || PARAMS.god) return;
   if (W.stage === 'bossIntro' || W.stage === 'bossDeath' || W.stage === 'victory') return;
-  dmg = Math.round(dmg * W.diff.enemyDmg);
+  dmg = Math.round(dmg * W.diff.enemyDmg * (P.giantT > 0 ? 0.5 : 1));
   P.hp -= dmg; P.invuln = 0.5; P.flash = 0.15; P.reveal = 1.2;
   W.shake = Math.max(W.shake, 8);
   floatText(P.x, P.y - 80, '-' + dmg, '#ff4a3a');
@@ -1551,20 +1682,21 @@ function hurtPlayer(dmg) {
     Music.stop(); Snd.play('gameOver');
   }
 }
-function muzzlePos(ang) { return [P.x + P.face * 6 + Math.cos(ang) * 40, P.y - 30 + Math.sin(ang) * 40]; }
+function muzzlePos(ang) { const g = 1 + 0.6 * P.grow; return [P.x + P.face * 6 * g + Math.cos(ang) * 40 * g, P.y - 30 * g + Math.sin(ang) * 40 * g]; }
 function tryFire(ang) {
   if (P.fireCd > 0) return false;
   const w = curWeapon(), isPistol = w === WEAPONS.pistol;
   if (isPistol && P.ammo < 1) { Snd.play('empty'); P.fireCd = 0.15; return false; }
   if (ang === null || ang === undefined) ang = P.face > 0 ? 0 : Math.PI;
-  P.fireCd = w.cd; P.reveal = 1.2; P.recoil = 1;
+  P.fireCd = w.cd * (P.speedT > 0 ? 0.7 : 1); P.reveal = 1.2; P.recoil = 1;
+  const dmgMul = P.giantT > 0 ? 1.8 : 1;
   P.face = Math.cos(ang) >= 0 ? 1 : -1;
   const [mx, my] = muzzlePos(ang);
-  if (w.kind === 'laser') fireLaser(mx, my, ang, w);
+  if (w.kind === 'laser') fireLaser(mx, my, ang, dmgMul > 1 ? Object.assign({}, w, { dmg: w.dmg * dmgMul }) : w);
   else for (let i = 0; i < w.n; i++) {
     const off = w.n > 1 ? (i - (w.n - 1) / 2) * w.spread : 0, j = w.jitter ? (Math.random() - 0.5) * w.jitter : 0;
-    shoot('player', mx, my, ang + off + j, { speed: w.speed * (w.kind === 'flame' ? 0.8 + Math.random() * 0.4 : 1), range: w.range, dmg: w.dmg, r: w.r,
-      kind: w.kind, pierce: w.pierce, knock: w.knock, blast: w.blast, blastDmg: w.blastDmg, color: w.color });
+    shoot('player', mx, my, ang + off + j, { speed: w.speed * (w.kind === 'flame' ? 0.8 + Math.random() * 0.4 : 1), range: w.range, dmg: w.dmg * dmgMul, r: w.r * (dmgMul > 1 ? 1.3 : 1),
+      kind: w.kind, pierce: w.pierce, knock: w.knock, blast: w.blast, blastDmg: w.blastDmg && w.blastDmg * dmgMul, color: w.color });
   }
   if (w.kind !== 'flame') W.flashes.push({ x: mx, y: my, ang, t: 0, alive: true, col: w.color });
   burst(mx, my, w.kind === 'flame' ? 1 : 4, { ang, cone: 0.8, size: 4, speed: 200, life: 0.25, grav: 0, cols: w.kind === 'confetti' ? CONFETTI : [w.color, '#fff3b0'] });
@@ -1587,11 +1719,6 @@ function autoAim() {
   W.lock = { x: best[0], y: best[1], t: 0.35 };
   return Math.atan2(best[1] - (P.y - 30), best[0] - P.x);
 }
-function castUlt() {
-  P.ult = 0; W.timeStop = 3; W.flashT = 0.25; Snd.play('ult');
-  banner('⏱ 時間暫停！', '全場定格 3 秒', 1.4);
-  setTimeout(() => cutin(pick(CONFIG.cutins.ult), true), 400);
-}
 function swapWeapon() {
   if (!P.special) { floatText(P.x, P.y - 96, '只有手槍', '#fff', 14); return; }
   P.cur = P.cur === 'pistol' ? 'special' : 'pistol';
@@ -1599,10 +1726,15 @@ function swapWeapon() {
 }
 function updatePlayer(dt) {
   P.invuln -= dt; P.flash -= dt; P.reveal -= dt; P.fireCd -= dt; P.recoil = Math.max(0, P.recoil - dt * 8);
+  P.speedT = Math.max(0, P.speedT - dt); P.giantT = Math.max(0, P.giantT - dt);
+  P.grow = clamp(P.grow + (P.giantT > 0 ? dt : -dt) * 4, 0, 1); P.r = 18 + 12 * P.grow;
+  if (Input.skillTap) { const id = Input.skillTap; Input.skillTap = null; useSkill(id); }
   if (P.dead) return;
   const m = Input.moveVec(), canMove = W.stage !== 'bossIntro' && W.stage !== 'bossDeath';
   P.moving = canMove && (m.x !== 0 || m.y !== 0);
-  if (P.moving) { moveCircle(P, m.x * P.speed * dt, m.y * P.speed * dt); P.walkT += dt; if (Math.abs(m.x) > 0.2) P.face = m.x > 0 ? 1 : -1; }
+  const spd = P.speed * (P.speedT > 0 ? 1.7 : 1);
+  if (P.moving && P.speedT > 0 && Math.random() < 0.5) burst(P.x, P.y - 20, 1, { cols: ['#3fb8ff', '#b8ecff'], size: 7, speed: 20, life: 0.3, grav: 0, round: true });
+  if (P.moving) { moveCircle(P, m.x * spd * dt, m.y * spd * dt); P.walkT += dt; if (Math.abs(m.x) > 0.2) P.face = m.x > 0 ? 1 : -1; }
   P.hidden = Arena.bushAt(P.x, P.y) && P.reveal <= 0;
   if (P.ammo < 3) { P.reload += dt / 0.7; if (P.reload >= 1) { P.ammo++; P.reload = 0; } }
   if (Input.swapTap) { Input.swapTap = false; if (canAct()) swapWeapon(); }
@@ -1625,13 +1757,13 @@ function updatePlayer(dt) {
     if (aim !== null && !Input.touch) P.face = Math.cos(aim) >= 0 ? 1 : -1;
   }
   Input.pendingFire = null;
-  if (Input.ultTap) { Input.ultTap = false; if (canAct() && P.ult >= 100 && W.timeStop <= 0) castUlt(); }
+
 }
 
 /* ---------- 敵人 ---------- */
 function spawnEnemy(type, x, y) {
   const d = ENEMY[type], hp = d.hp * W.diff.enemyHp;
-  W.enemies.push({ type, d, x, y, r: d.r, hp, maxHp: hp, sprite: pick(d.sprites), flash: 0, hitCd: 0, walkT: Math.random(), face: 1, state: 'chase', st: 0,
+  W.enemies.push({ type, d, x, y, r: d.r, hp, maxHp: hp, sprite: pick(d.sprites), skin: NPC_SKINS[type] ? pick(NPC_SKINS[type]) : null, flash: 0, hitCd: 0, walkT: Math.random(), face: 1, state: 'chase', st: 0,
     kx: 0, ky: 0, bubble: null, bubbleT: 2 + Math.random() * 4, zig: Math.random() * 6, shootT: 1 + Math.random() * 1.5, side: Math.random() < 0.5 ? -1 : 1,
     spawnT: 0.4, dir: [1, 0], alive: true });
 }
@@ -1651,10 +1783,10 @@ function killEnemy(e, quiet) {
   Snd.play('enemyDie');
   if (e.d.tubby) floatText(e.x, e.y - 90, `${e.d.name} 被打倒了！`, '#ffd23f', 18);
   if (W.kills % 35 === 0) cutin(pick(CONFIG.cutins.kills));
-  const r = Math.random(), d = e.d;
-  if (r < d.pWeapon) addDrop('weapon', e.x, e.y, pickWeapon());
-  else if (r < d.pWeapon + d.pSpring) addDrop('spring', e.x, e.y, d.spring);
-  else if (r < d.pWeapon + d.pSpring + d.pHeart) addDrop('heart', e.x, e.y, 25);
+  const d = e.d;
+  if (Math.random() < d.pWeapon) addDrop('weapon', e.x, e.y, pickWeapon());
+  if (Math.random() < d.pCash) dropCash(e.x, e.y, d.cash);
+  if (Math.random() < d.pHeart) addDrop('heart', e.x + 14, e.y + 8, 25);
 }
 function steer(e, t) {
   let tx = t.x, ty = t.y;
@@ -1732,7 +1864,10 @@ function updateEnemies(edt, dt) {
     const hit = moveCircle(e, mvx * edt, mvy * edt);
     if (hit && e.state === 'dash') { e.state = 'stun'; e.st = 0.8; W.shake = Math.max(W.shake, 5); burst(e.x, e.y, 8, { cols: ['#c9b49a', '#a07a5c'], size: 4 }); }
     if (Math.abs(mvx) > 5) e.face = mvx > 0 ? 1 : -1;
-    if (!P.dead && e.spawnT <= 0 && e.hitCd <= 0 && dist < e.r + P.r + 4) { hurtPlayer(e.state === 'dash' ? d.dmg * 1.5 : d.dmg); e.hitCd = 0.8; }
+    if (!P.dead && e.spawnT <= 0 && e.hitCd <= 0 && dist < e.r + P.r + 4) {
+      if (P.giantT > 0) { damageEnemy(e, 25, null, P.x, P.y); e.hitCd = 0.4; W.shake = Math.max(W.shake, 3); }   // 巨大化：撞到就把敵人撞飛
+      else { hurtPlayer(e.state === 'dash' ? d.dmg * 1.5 : d.dmg); e.hitCd = 0.8; }
+    }
     // 頭頂彈幕
     e.bubbleT -= edt;
     if (e.bubbleT <= 0) {
@@ -1784,6 +1919,7 @@ function updateDirector(dt, ts) {
   else if (W.stage === 'p2' && W.time >= 100) enterStage('bossIntro');
   if (W.stage === 'p1' || W.stage === 'p2') { W.spawnT -= dt * ts; if (W.spawnT <= 0) { spawnWave(); W.spawnT = spawnInterval(); } }
   if (W.stage === 'p1' || W.stage === 'p2' || W.stage === 'boss') {
+    W.cashT -= dt; if (W.cashT <= 0) { spawnAmbientCash(); W.cashT = 3.2; }
     W.supplyT -= dt;
     if (W.supplyT <= 0 && W.drops.filter(d => d.kind === 'weapon').length < 2) { supplyDrop(); W.supplyT = W.stage === 'boss' ? 15 : 18; }
   }
@@ -1948,7 +2084,7 @@ function spawnParty() {
     for (let tries = 0; tries < 8; tries++) {
       const a = i / 16 * Math.PI * 2 + tries * 0.3, r = 200 + Math.random() * 130, x = P.x + Math.cos(a) * r, y = P.y + Math.sin(a) * r;
       if (x < 80 || y < 80 || x > WORLD_W - 80 || y > WORLD_H - 80 || Arena.solidAt(x, y)) continue;
-      W.party.push({ x, y, sprite: pick(keys), ph: Math.random() * 6, face: x < P.x ? 1 : -1 });
+      W.party.push({ x, y, sprite: pick(keys), skin: pick(Object.values(NPC_SKINS).flat()), ph: Math.random() * 6, face: x < P.x ? 1 : -1 });
       burst(x, y - 30, 10, { up: 150 });
       break;
     }
@@ -1959,8 +2095,7 @@ function updateVictory(dt) {
   if (t > 1.2 && W.vBell < 12 && t > 1.2 + W.vBell * 0.22) { W.vBell++; Snd.play('bell'); }
   if (t > 1.2 && !W.party.length) { spawnParty(); W.shake = 6; }
   if (t > 1.2 && Math.random() < dt * 5) burst(P.x + (Math.random() - 0.5) * 700, P.y - 150 + (Math.random() - 0.5) * 300, 18, { up: 220, speed: 260, life: 1.2 });
-  if (t > 4 && !W.songStarted) { W.songStarted = true; W.songLen = Music.birthday() || 8; }
-  if (W.songStarted && t > 4 + W.songLen + 1.5) goEnding();
+  if (t > 5.4) goEnding();
 }
 function goEnding() {
   const key = 'best_' + W.diffKey, best = Store.get(key, null);
@@ -2032,9 +2167,13 @@ function drawOutlinedText(text, x, y, px, col, align = 'center') {
 
 function drawPlayerSprite() {
   if (P.dead) return;
-  const z = Sprites.size('hero_0'), s = CH_SCALE;
-  const f = P.moving ? 1 + (Math.floor(P.walkT * 8) % 2) : 0;
-  shadowAt(P.x, P.y + P.r * 0.6, 24);
+  const g = 1 + 0.6 * P.grow, z = Sprites.size('hero_0'), s = CH_SCALE * g;
+  const f = P.moving ? 1 + (Math.floor(P.walkT * (P.speedT > 0 ? 14 : 8)) % 2) : 0;
+  shadowAt(P.x, P.y + P.r * 0.6, 24 * g);
+  if (P.giantT > 0 || P.speedT > 0) {
+    const col = P.giantT > 0 ? '255,140,40' : '60,180,255', pulse = 0.25 + 0.15 * Math.sin(Game.t * 10);
+    ctx.fillStyle = `rgba(${col},${pulse})`; ctx.beginPath(); ctx.ellipse(P.x, P.y + P.r * 0.4, 40 * g, 16 * g, 0, 0, Math.PI * 2); ctx.fill();
+  }
   let a = 1;
   if (P.hidden && W.stage !== 'victory') a = 0.45;
   if (P.invuln > 0 && P.invuln < 100 && Math.floor(Game.t * 20) % 2) a *= 0.5;
@@ -2043,9 +2182,9 @@ function drawPlayerSprite() {
   Sprites.draw(ctx, 'hero_' + f, x, y, s, P.flash > 0 ? 'flash' : 'normal', P.face < 0);
   if (W.stage === 'victory') drawHat(ctx, 'hero', x, y, s);
   else {
-    const key = 'w_' + (P.cur === 'special' && P.special ? P.special.id : 'pistol'), wz = Sprites.size(key), ws = 1.7;
+    const key = 'w_' + (P.cur === 'special' && P.special ? P.special.id : 'pistol'), wz = Sprites.size(key), ws = 1.7 * g;
     const ang = P.aim !== null ? P.aim : (P.face > 0 ? 0 : Math.PI);
-    ctx.save(); ctx.translate(P.x + P.face * 6, P.y - 30); ctx.rotate(ang); if (Math.cos(ang) < 0) ctx.scale(1, -1);
+    ctx.save(); ctx.translate(P.x + P.face * 6 * g, P.y - 30 * g); ctx.rotate(ang); if (Math.cos(ang) < 0) ctx.scale(1, -1);
     ctx.drawImage(Sprites.get(key), -4 - P.recoil * 7, -wz.h * ws / 2, wz.w * ws, wz.h * ws);
     ctx.restore();
   }
@@ -2054,7 +2193,7 @@ function drawPlayerSprite() {
 function hexA(hex, a) { const n = parseInt(hex.slice(1, 7), 16); return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`; }
 /* 射程指示：漸層扇形 + 白色虛線邊 + 射程終點弧線，讓手機上也一眼看出打得到哪裡 */
 function drawAimGuide(ang, strong) {
-  const w = curWeapon(), ox = P.x + P.face * 6, oy = P.y - 30, R = w.range;
+  const w = curWeapon(), gs = 1 + 0.6 * P.grow, ox = P.x + P.face * 6 * gs, oy = P.y - 30 * gs, R = w.range;
   const half = w.kind === 'laser' ? 0.025 : Math.max(0.05, ((w.n - 1) * (w.spread || 0) + (w.jitter || 0)) / 2 + 0.035);
   ctx.save();
   ctx.globalAlpha = strong ? 1 : 0.55;
@@ -2109,16 +2248,25 @@ function drawBullet(b, gray) {
 }
 function drawEnemy(e) {
   const d = e.d, pop = e.spawnT > 0 ? clamp(1 - e.spawnT / 0.4, 0.15, 1) : 1, s = d.scale * pop;
-  const z = Sprites.size(e.sprite + '_0');
-  const f = Math.floor(e.walkT * 6) % 2;
-  shadowAt(e.x, e.y + e.r * 0.6, e.r * 1.2);
+  const skin = e.skin && NPC.ready[e.skin] ? e.skin : null, fly = skin && NPC_FLY.has(skin);
+  shadowAt(e.x, e.y + e.r * 0.6, e.r * (fly ? 0.8 : 1.2));
   if (e.state === 'windup') FX.dashLine(ctx, e.x, e.y, e.x + e.dir[0] * (e.type === 'po' ? 440 : 380), e.y + e.dir[1] * (e.type === 'po' ? 440 : 380), Game.t);
   if (e.state === 'stomp') FX.warnCircle(ctx, e.x, e.y + 10, 140, clamp(1 - e.st / 0.6, 0, 1));
-  const x = e.x - z.w * s / 2, y = e.y + e.r * 0.8 - z.h * s;
   const v = W.timeStop > 0 ? 'gray' : e.flash > 0 ? 'flash' : 'normal';
   const jit = e.state === 'stun' ? Math.sin(Game.t * 50) * 2 : 0;
-  Sprites.draw(ctx, `${e.sprite}_${f}`, x + jit, y, s, v, e.face < 0);
-  if (e.type === 'charger') drawCrown(ctx, x + jit, y, s, v);
+  let y;
+  if (skin) {
+    const hop = fly ? 18 + Math.sin(Game.t * 6 + e.zig) * 6 : Math.abs(Math.sin(e.walkT * 10)) * 4;
+    y = drawNpcSkin(skin, e.x + jit, e.y + e.r * 0.8 - hop, NPC_H[e.type] * pop, { tilt: fly ? 0 : Math.sin(e.walkT * 10) * 0.07, flip: e.face < 0, variant: v, ph: e.zig });
+    if (v === 'flash' && Sprites.get(`npc_${skin}_0`, 'flash') === Sprites.get(`npc_${skin}_0`)) { ctx.globalAlpha = 0.5; ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(e.x, e.y - 20, e.r * 1.4, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1; }
+    if (e.type === 'charger') Sprites.draw(ctx, 'crown', e.x - 11 + jit, y - 10, 1.8, v);
+  } else {
+    const z = Sprites.size(e.sprite + '_0'), f = Math.floor(e.walkT * 6) % 2, x = e.x - z.w * s / 2;
+    y = e.y + e.r * 0.8 - z.h * s;
+    Sprites.draw(ctx, `${e.sprite}_${f}`, x + jit, y, s, v, e.face < 0);
+    if (e.type === 'charger') drawCrown(ctx, x + jit, y, s, v);
+  }
+  e.topY = y;
   if (d.tubby && e.spawnT <= 0) {
     const bw = 56, bx = e.x - bw / 2, by = y - 6;
     ctx.fillStyle = OUTLINE; ctx.fillRect(bx - 2, by - 2, bw + 4, 9); ctx.fillStyle = TUBBIES[e.type].ramp[3]; ctx.fillRect(bx, by, bw * Math.max(0, e.hp) / e.maxHp, 5);
@@ -2172,8 +2320,9 @@ function renderWorld() {
       continue;
     }
     shadowAt(d.x, d.y + 10, 12);
-    const key = d.kind === 'heart' ? 'heart' : 'spring', z = Sprites.size(key);
-    Sprites.draw(ctx, key, d.x - z.w, d.y - z.h * 2 + bob, 2);
+    const key = d.kind === 'heart' ? 'heart' : 'cash', z = Sprites.size(key);
+    if (d.kind === 'cash') { ctx.save(); ctx.translate(d.x, d.y - 14 + bob); ctx.rotate(Math.sin(Game.t * 3 + d.bob) * 0.15); Sprites.draw(ctx, 'cash', -z.w, -z.h, 2); ctx.restore(); if (Math.sin(Game.t * 5 + d.bob) > 0.95) { ctx.fillStyle = '#fff'; ctx.fillRect(d.x + 14, d.y - 26 + bob, 4, 4); } }
+    else Sprites.draw(ctx, key, d.x - z.w, d.y - z.h * 2 + bob, 2);
   }
   // 蛋糕預警
   for (const k of W.cakes) if (!k.landed) FX.warnCircle(ctx, k.x, k.y, k.r, clamp(1 - k.t / 1.2, 0, 1));
@@ -2194,6 +2343,11 @@ function renderWorld() {
     else if (it.k === 4) {
       const m = it.m, z = Sprites.size(m.sprite + '_0'), s = 1.3, j = Math.abs(Math.sin(Game.t * 6 + m.ph)) * 12;
       shadowAt(m.x, m.y + 10, 18);
+      if (m.skin && NPC.ready[m.skin]) {
+        const top = drawNpcSkin(m.skin, m.x, m.y + 12 - j, 76, { flip: m.face < 0, ph: m.ph });
+        Sprites.draw(ctx, 'hat', m.x - 11, top - 18, 2.2);
+        continue;
+      }
       const x = m.x - z.w * s / 2, y = m.y + 12 - z.h * s - j;
       Sprites.draw(ctx, m.sprite + '_' + (Math.floor(Game.t * 6 + m.ph) % 2), x, y, s, 'normal', m.face < 0);
       drawHat(ctx, 'mob', x, y, s);
@@ -2228,6 +2382,7 @@ function renderWorld() {
   // 子彈、爆炸、雷射、槍口火光
   for (const b of W.bullets) drawBullet(b, gray && b.team === 'enemy');
   for (const o of W.booms) {
+    if (o.t < 0) continue;
     const p = o.t / 0.4;
     ctx.fillStyle = `rgba(255,220,120,${(1 - p) * 0.45})`; ctx.beginPath(); ctx.arc(o.x, o.y, o.r * (0.4 + 0.6 * p), 0, Math.PI * 2); ctx.fill();
     ctx.strokeStyle = `rgba(255,140,40,${1 - p})`; ctx.lineWidth = 12 * (1 - p) + 2; ctx.beginPath(); ctx.arc(o.x, o.y, o.r * (0.3 + 0.8 * p), 0, Math.PI * 2); ctx.stroke();
@@ -2258,7 +2413,7 @@ function renderWorld() {
   ctx.globalAlpha = 1;
   // 頭頂彈幕、浮字
   const bpx = Math.round(13 / Cam.zoom);
-  for (const e of W.enemies) if (e.bubble && e.spawnT <= 0) UI.bubble(ctx, e.bubble, e.x, e.y - Sprites.size(e.sprite + '_0').h * e.d.scale + 10, bpx);
+  for (const e of W.enemies) if (e.bubble && e.spawnT <= 0) UI.bubble(ctx, e.bubble, e.x, (e.topY || e.y - 60) + 8, bpx);
   if (W.boss && W.boss.bubble) UI.bubble(ctx, W.boss.bubble, W.boss.x, W.boss.y - 90, Math.round(16 / Cam.zoom));
   for (const t of W.texts) { ctx.globalAlpha = 1 - t.t / t.dur; drawOutlinedText(t.text, t.x, t.y - t.t * 40, Math.round(t.size / Math.max(0.7, Cam.zoom)), t.col); }
   ctx.globalAlpha = 1;
@@ -2304,7 +2459,7 @@ function menuButton(x, y, w, h, label, col, onTap) {
   clickables.push({ x, y, w, h, onTap: () => { Snd.play('click'); onTap(); } });
 }
 const STAGE_LABEL = { p1: 'Phase 1・排擠開始', p2: 'Phase 2・精英群友', bossIntro: 'Phase 3・巧馨降臨', boss: 'Phase 3・打倒巧馨', bossDeath: '', victory: '' };
-const HINTS = ['移動：WASD／左手搖桿', '射擊：滑鼠左鍵／按住拉炮鈕（拖曳可瞄準）', '打破木箱、撿空投可以換強力武器', '撿時鐘發條，集滿放大招「時停」'];
+const HINTS = ['移動：WASD／左手搖桿', '射擊：滑鼠左鍵／按住拉炮鈕（拖曳可瞄準）', '打破木箱、撿空投可以換強力武器', '撿新台幣 100 元存錢，換加速／巨大化／炸彈'];
 function renderHUD() {
   ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
   const s = Safe, w = view.w, h = view.h, t = Game.t;
@@ -2337,7 +2492,7 @@ function renderHUD() {
   const b = W.boss;
   if (b && (W.stage === 'boss' || (W.stage === 'bossIntro' && b.landed))) {
     const bbw = narrow ? w - s.l - s.r - 28 : Math.min(420, w * 0.7);
-    UI.bossBar(ctx, narrow ? s.l + 14 : w / 2 - bbw / 2, narrow ? s.t + 142 : cy + 5 * cs + 62, bbw, Math.max(0, b.hp / b.maxHp), `${CONFIG.names.boss}（${CONFIG.names.bossBday} 壽星・爆氣中）`);
+    UI.bossBar(ctx, narrow ? s.l + 14 : w / 2 - bbw / 2, narrow ? s.t + 162 : cy + 5 * cs + 62, bbw, Math.max(0, b.hp / b.maxHp), `${CONFIG.names.boss}（${CONFIG.names.bossBday} 壽星・爆氣中）`);
   }
   if (W.stage === 'p1' && W.time < 9) drawOutlinedText(HINTS[Math.min(3, Math.floor(W.time / 2.25))], w / 2, h * (h > w ? 0.6 : 0.72), narrow ? 14 : 17, '#fff');
   drawDropArrows();
@@ -2358,17 +2513,55 @@ function renderHUD() {
     UI.button(ctx, B.fire.x, B.fire.y, B.fire.r, 'w_' + cid, cid === 'pistol' ? `拉炮 ${P.ammo}` : `${cw0.name} ${P.special.ammo}`, { pressed: !!Input.fire, t, color: cid === 'pistol' ? '#ff6a3c' : '#d8402a' });
     const other = P.special ? (P.cur === 'pistol' ? P.special.id : 'pistol') : null;
     UI.button(ctx, B.swap.x, B.swap.y, B.swap.r, other ? 'w_' + other : null, other ? '切換' : '無武器', { t, color: '#6a4a32', disabled: !other });
-    const ready = P.ult >= 100;
-    UI.button(ctx, B.ult.x, B.ult.y, B.ult.r, 'clockIcon', ready ? '時停!' : Math.floor(P.ult) + '%', { glow: ready, t, color: '#3a8ad8', disabled: !ready });
-  } else {
-    const ux = w - s.r - 66, uy = h - s.b - 70;
-    UI.ultRing(ctx, ux, uy, 34, P.ult / 100, t);
-    drawOutlinedText(P.ult >= 100 ? '空白鍵：時停!' : `時停 ${Math.floor(P.ult)}%`, ux, uy + 52, 12, P.ult >= 100 ? '#ffd23f' : '#fff');
-  }
+    for (const id of SKILL_ORDER) {
+      const sk = SKILLS[id], bb = B.skills[id], act = id === 'speed' ? P.speedT : id === 'giant' ? P.giantT : 0, ready = P.money >= sk.cost;
+      UI.button(ctx, bb.x, bb.y, bb.r, 'sk_' + id, act > 0 ? `${Math.ceil(act)}秒` : ready ? sk.name : '$' + sk.cost, { glow: ready && act <= 0, t, color: sk.color, disabled: !ready && act <= 0 });
+    }
+  } else drawDeskSkills();
+  drawMoney(s.l + 14, s.t + 14 + 50 + 36 + (Input.touch || !P.special ? 6 : 20));
+  renderTip();
   drawRoundBtn(B.pause, 'pause'); drawRoundBtn(B.mute, 'mute');
   renderCutin();
   if (PARAMS.debug) drawOutlinedText(`敵 ${W.enemies.length} 彈 ${W.bullets.length} 粒 ${W.parts.length} t=${W.time.toFixed(1)}`, 8, h - 14, 12, '#7f7', 'left');
   if (W.overlay) renderOverlay();
+}
+function drawMoney(x, y) {
+  const next = SKILL_ORDER.map(id => SKILLS[id]).find(sk => P.money < sk.cost);
+  ctx.fillStyle = 'rgba(43,26,18,0.7)'; ctx.fillRect(x, y, 160, 26);
+  ctx.fillStyle = '#ffd23f'; ctx.fillRect(x, y, 4, 26);
+  Sprites.draw(ctx, 'cash', x + 8, y + 5, 1);
+  drawOutlinedText(`$ ${P.money}`, x + 42, y + 13, 14, '#ffd23f', 'left');
+  if (next) drawOutlinedText(`差${next.cost - P.money}→${next.emoji}`, x + 156, y + 13, 10, '#e8c9a0', 'right');
+  else drawOutlinedText('全部可換！', x + 156, y + 13, 10, '#7ee06a', 'right');
+}
+/* 電腦版：右下角三格技能欄（可點、也可按 1／2／3） */
+function drawDeskSkills() {
+  const t = Game.t;
+  for (const id of SKILL_ORDER) {
+    const sk = SKILLS[id], r = Input.btn.desk[id], act = id === 'speed' ? P.speedT : id === 'giant' ? P.giantT : 0, ready = P.money >= sk.cost;
+    if (ready && act <= 0) { ctx.fillStyle = `rgba(255,210,63,${0.35 + 0.25 * Math.sin(t * 8)})`; ctx.fillRect(r.x - 5, r.y - 5, r.w + 10, r.h + 10); }
+    ctx.fillStyle = OUTLINE; ctx.fillRect(r.x - 3, r.y - 3, r.w + 6, r.h + 6);
+    ctx.fillStyle = ready || act > 0 ? sk.color : '#5a4a3a'; ctx.fillRect(r.x, r.y, r.w, r.h);
+    const z = Sprites.size('sk_' + id); Sprites.draw(ctx, 'sk_' + id, r.x + (r.w - z.w * 1.6) / 2, r.y + 4, 1.6, ready || act > 0 ? 'normal' : 'gray');
+    if (act > 0) { ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(r.x, r.y + r.h * (act / sk.dur), r.w, r.h * (1 - act / sk.dur)); }
+    drawOutlinedText(act > 0 ? `${Math.ceil(act)}秒` : `$${sk.cost}`, r.x + r.w / 2, r.y + r.h - 9, 11, '#fff');
+    drawOutlinedText(sk.key, r.x + 8, r.y + 9, 11, '#fff');
+  }
+  drawOutlinedText('💰 撿錢換技能：1 加速・2 巨大化・3 炸彈', Input.btn.desk.speed.x + 99, Input.btn.desk.speed.y - 14, 11, '#ffd23f');
+}
+/* 說明提示框：第一次撿到錢、存到可以換技能時出現 */
+function renderTip() {
+  const tp = W.tip; if (!tp) return;
+  const w = view.w, h = view.h, a = Math.min(1, tp.t * 4, (tp.dur - tp.t) * 3);
+  const bw = Math.min(440, w - 28), x = w / 2 - bw / 2, y = h - Safe.b - (Input.touch ? 300 : 170);
+  ctx.globalAlpha = a;
+  ctx.font = UI.font(w < 640 ? 14 : 16);
+  const lines = wrapText(tp.text, bw - 28), bh = 18 + lines.length * 22;
+  ctx.fillStyle = OUTLINE; ctx.fillRect(x - 3, y - 3, bw + 6, bh + 6);
+  ctx.fillStyle = '#3a2a10'; ctx.fillRect(x, y, bw, bh);
+  ctx.fillStyle = '#ffd23f'; ctx.fillRect(x, y, bw, 3); ctx.fillRect(x, y + bh - 3, bw, 3);
+  lines.forEach((ln, i) => drawOutlinedText(ln, w / 2, y + 20 + i * 22, w < 640 ? 14 : 16, '#fff'));
+  ctx.globalAlpha = 1;
 }
 function drawWeaponPanel(x, y) {
   const id = P.cur === 'special' && P.special ? P.special.id : 'pistol', w = WEAPONS[id], z = Sprites.size('w_' + id);
@@ -2414,17 +2607,18 @@ function renderCutin() {
   const c = W.cutin; if (!c) return;
   const w = view.w, narrow = w < 640, boss = W.boss && (W.stage === 'boss' || W.stage === 'bossIntro');
   const pw = Math.min(380, w - 24), ph = narrow ? 70 : 84;
-  const k = Math.min(1, c.t / 0.25, (c.dur - c.t) / 0.25), ease = 1 - Math.pow(1 - Math.max(0, k), 3);
-  const x = w - 12 - pw + (1 - ease) * (pw + 40) + (c.rage ? Math.sin(Game.t * 60) * 2 : 0);
-  const y = Safe.t + (narrow ? (boss ? 166 : 112) : (boss ? 132 : 84));
+  const k = Math.min(1, c.t / 0.25, (c.dur - c.t) / 0.25), ease = 1 - Math.pow(1 - Math.max(0, k), 3), hero = c.who === 'hero';
+  const x = hero ? 12 - (1 - ease) * (pw + 40) : w - 12 - pw + (1 - ease) * (pw + 40) + (c.rage ? Math.sin(Game.t * 60) * 2 : 0);
+  const y = Safe.t + (narrow ? (boss ? 186 : 146) : (boss ? 150 : 150));
   ctx.fillStyle = OUTLINE; ctx.fillRect(x - 3, y - 3, pw + 6, ph + 6);
-  ctx.fillStyle = c.rage ? '#8a1418' : '#5a1a2a'; ctx.fillRect(x, y, pw, ph);
+  ctx.fillStyle = hero ? '#1e5a2a' : c.rage ? '#8a1418' : '#5a1a2a'; ctx.fillRect(x, y, pw, ph);
   ctx.fillStyle = R_GOLD[3]; ctx.fillRect(x, y, pw, 3); ctx.fillRect(x, y + ph - 3, pw, 3);
   const pz = ph - 16;
-  ctx.fillStyle = c.rage ? '#ff6a3c' : '#ffd27a'; ctx.fillRect(x + 8, y + 8, pz, pz);
-  ctx.drawImage(Sprites.get(c.rage ? 'boss_rage' : 'boss'), 14, 0, 36, 36, x + 8, y + 8, pz, pz);
+  ctx.fillStyle = hero ? '#bff0a0' : c.rage ? '#ff6a3c' : '#ffd27a'; ctx.fillRect(x + 8, y + 8, pz, pz);
+  if (hero) ctx.drawImage(Sprites.get('hero_0'), 6, 4, 34, 34, x + 8, y + 8, pz, pz);
+  else ctx.drawImage(Sprites.get(c.rage ? 'boss_rage' : 'boss'), 14, 0, 36, 36, x + 8, y + 8, pz, pz);
   ctx.strokeStyle = OUTLINE; ctx.lineWidth = 2; ctx.strokeRect(x + 8, y + 8, pz, pz);
-  drawOutlinedText(`${CONFIG.names.boss}`, x + pz + 20, y + 17, 13, '#ffd23f', 'left');
+  drawOutlinedText(hero ? `${CONFIG.names.hero} 💰` : `${CONFIG.names.boss}`, x + pz + 20, y + 17, 13, hero ? '#9ee06a' : '#ffd23f', 'left');
   ctx.font = UI.font(narrow ? 14 : 17);
   const lines = wrapText(c.text, pw - pz - 34);
   lines.forEach((ln, i) => drawOutlinedText(ln, x + pz + 20, y + (narrow ? 36 : 42) + i * (narrow ? 19 : 22), narrow ? 14 : 17, '#fff', 'left'));
@@ -2441,7 +2635,7 @@ function renderVictoryUI() {
     drawOutlinedText(`${CONFIG.names.bossBday} 生日快樂！`, w / 2, cy + R + 5 * cs + 52, w < 500 ? 26 : 36, '#ffd23f');
     ctx.globalAlpha = 1;
   }
-  if (t > 5) drawOutlinedText('點一下繼續 ▶', w / 2, h - Safe.b - 30, 14, '#fff');
+  if (t > 2.5) drawOutlinedText('點一下繼續 ▶', w / 2, h - Safe.b - 30, 14, '#fff');
 }
 function renderOverlay() {
   const w = view.w, h = view.h;
@@ -2608,12 +2802,15 @@ Game.states.PLAY = {
     if (W.overlay === 'pause') { W.overlay = null; Snd.resume(); }
     else if (!W.overlay) { W.overlay = 'pause'; Input.reset(); Snd.pause(); }
   },
-  skipTap() { if (W.stage === 'victory' && W.stageT > 5) { goEnding(); return true; } return false; },
+  skipTap() { if (W.stage === 'victory' && W.stageT > 2.5) { goEnding(); return true; } return false; },
   key(c) {
     if (c === 'Escape' || c === 'KeyP') { if (W.overlay !== 'gameover') this.togglePause(); }
     else if (c === 'KeyM') Snd.setMute(!Snd.muted);
     else if (c === 'KeyQ' || c === 'KeyE') Input.swapTap = true;
-    else if (c === 'Space' || c === 'Enter') { if (!this.skipTap() && c === 'Space') Input.ultTap = true; }
+    else if (c === 'Space' || c === 'Enter') { if (!this.skipTap() && c === 'Space') Input.skillTap = 'bomb'; }
+    else if (c === 'Digit1' || c === 'Numpad1') Input.skillTap = 'speed';
+    else if (c === 'Digit2' || c === 'Numpad2') Input.skillTap = 'giant';
+    else if (c === 'Digit3' || c === 'Numpad3') Input.skillTap = 'bomb';
   },
   update(dt) {
     if (W.overlay) return;
@@ -2625,38 +2822,118 @@ Game.states.PLAY = {
   tap(x, y) { const b = hit(x, y); if (b) b.onTap(); },
 };
 
+/* =====================================================================
+ * 破關動畫：夜空煙火 → 蛋糕升起 → 兩位壽星走到蛋糕兩側 → 派對帽落下
+ *          → 同時打出「11/28 迪西生日快樂」「11/29 巧馨生日快樂」兩條緞帶 → 成績與再玩一次
+ * ===================================================================== */
 Game.states.ENDING = {
-  enter(p) { this.p = p; this.parts = []; this.t = 0; },
+  enter(p) {
+    this.p = p; this.t = 0; this.parts = []; this.fw = []; this.fwT = 0;
+    this.stars = Array.from({ length: 80 }, () => [Math.random(), Math.random() * 0.62, Math.random() * 6]);
+    Music.stop();
+    setTimeout(() => { if (Game.stateName === 'ENDING') Music.birthday(); }, 600);
+  },
   update(dt) {
     this.t += dt;
-    if (this.parts.length < 160 && Math.random() < 0.7) this.parts.push({ x: Math.random() * view.w, y: -10, vy: 40 + Math.random() * 60, ph: Math.random() * 6, col: pick(CONFETTI) });
+    const w = view.w, h = view.h;
+    if (this.t > 2.3 && this.parts.length < 170 && Math.random() < 0.85)
+      this.parts.push({ x: Math.random() * w, y: -10, vy: 50 + Math.random() * 70, ph: Math.random() * 6, col: pick(CONFETTI) });
     for (const p of this.parts) p.y += p.vy * dt;
-    this.parts = this.parts.filter(p => p.y < view.h + 10);
+    this.parts = this.parts.filter(p => p.y < h + 10);
+    this.fwT -= dt;
+    if (this.t > 2.2 && this.fwT <= 0) {
+      this.fwT = 0.45 + Math.random() * 0.45;
+      const cx = w * (0.12 + Math.random() * 0.76), cy = h * (0.08 + Math.random() * 0.3), col = pick(CONFETTI);
+      for (let i = 0; i < 40; i++) { const a = i / 40 * Math.PI * 2, sp = 80 + Math.random() * 70; this.fw.push({ x: cx, y: cy, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 1.3, col }); }
+      Snd.play('pop');
+    }
+    for (const f of this.fw) { f.life -= dt; f.vy += 70 * dt; f.vx *= 0.985; f.vy *= 0.985; f.x += f.vx * dt; f.y += f.vy * dt; }
+    this.fw = this.fw.filter(f => f.life > 0);
   },
   render() {
     clickables.length = 0;
-    drawFloorBg(2);
-    const w = view.w, h = view.h, t = this.t;
+    const w = view.w, h = view.h, t = this.t, portrait = h > w, short = h < 450, S = Safe;
+    // 夜空與星星
+    const sky = ctx.createLinearGradient(0, 0, 0, h);
+    sky.addColorStop(0, '#120a28'); sky.addColorStop(0.55, '#3a1e4a'); sky.addColorStop(1, '#7a3e3a');
+    ctx.fillStyle = sky; ctx.fillRect(0, 0, w, h);
+    for (const [sx, sy, ph] of this.stars) { ctx.globalAlpha = 0.35 + 0.65 * Math.abs(Math.sin(t * 2 + ph)); ctx.fillStyle = '#fff'; ctx.fillRect(sx * w, sy * h, 2, 2); }
+    ctx.globalAlpha = 1;
+    for (const f of this.fw) { ctx.globalAlpha = Math.min(1, f.life * 1.4); ctx.fillStyle = f.col; ctx.fillRect(f.x - 2, f.y - 2, 4, 4); }
+    ctx.globalAlpha = 1;
+    // 地面
+    const groundY = Math.round(h * (portrait ? 0.64 : short ? 0.74 : 0.7));
+    for (let x = 0; x < w; x += 64) for (let y = groundY; y < h; y += 64) ctx.drawImage(Tiles.get('ground', (((x / 64) | 0) * 3 + ((y / 64) | 0)) % 8 * 2), x, y, 64, 64);
+    ctx.fillStyle = 'rgba(30,14,40,0.35)'; ctx.fillRect(0, groundY, w, h - groundY);
+    // 蛋糕升起 + 蠟燭火光
+    const cs = portrait ? 3 : short ? 2.4 : 3.6, cz = Sprites.size('cake');
+    const rise = clamp((t - 0.3) / 0.8, 0, 1), cakeX = Math.round(w / 2 - cz.w * cs / 2), cakeY = groundY + 12 - cz.h * cs + (1 - rise) * (h - groundY + cz.h * cs);
+    Sprites.draw(ctx, 'cake', cakeX, cakeY, cs);
+    if (rise >= 1) for (const cx of [17, 23, 29]) {
+      const fr = 1 + 0.25 * Math.sin(t * 20 + cx);
+      ctx.fillStyle = 'rgba(255,220,120,0.35)'; ctx.beginPath(); ctx.arc(cakeX + cx * cs, cakeY + 1 * cs, 7 * cs * fr, 0, Math.PI * 2); ctx.fill();
+    }
+    // 兩位壽星走到蛋糕兩側
+    const s = portrait ? Math.min(1.6, (w - cz.w * cs - 40) / (46 + 64)) : short ? 1.15 : 1.8;
+    const hz = Sprites.size('hero_0'), bz = Sprites.size('boss');
+    const walk = clamp((t - 0.6) / 1.4, 0, 1), ease = 1 - Math.pow(1 - walk, 2);
+    const hxT = cakeX - hz.w * s - 4, bxT = cakeX + cz.w * cs + 4;
+    const hx = lerp(-hz.w * s - 30, hxT, ease), bx = lerp(w + 30, bxT, ease);
+    const jh = t > 2.2 ? Math.abs(Math.sin(t * 5)) * 14 : 0, jb = t > 2.2 ? Math.abs(Math.sin(t * 5 + 1.3)) * 14 : 0;
+    const hy = groundY + 8 - hz.h * s - jh, by = groundY + 8 - bz.h * s - jb;
+    shadowAt(hx + hz.w * s / 2, groundY + 6, 22 * s); shadowAt(bx + bz.w * s / 2, groundY + 6, 30 * s);
+    Sprites.draw(ctx, 'hero_' + (walk < 1 ? 1 + (Math.floor(t * 8) % 2) : 0), hx, hy, s);
+    const ac = [bx + BOSS_CENTER[0] * s, by + BOSS_CENTER[1] * s];
+    FX.bossAura(ctx, ac[0], ac[1], s * BOSS_AURA, t, false, 'back');
+    Sprites.draw(ctx, 'boss', bx, by, s);
+    FX.bossAura(ctx, ac[0], ac[1], s * BOSS_AURA, t, false, 'front');
+    if (t > 2.0) { const d = 1 - clamp((t - 2.0) / 0.3, 0, 1); drawHat(ctx, 'hero', hx, hy - d * 90, s); drawHat(ctx, 'boss', bx, by - d * 90, s); }
+    // 大標題 + 兩條同時出現的生日緞帶
+    if (t > 2.3) {
+      const k = clamp((t - 2.3) / 0.35, 0, 1), pop = k * (1 + Math.sin(k * Math.PI) * 0.25);
+      ctx.save(); ctx.translate(w / 2, S.t + (portrait ? 54 : short ? 30 : 48)); ctx.scale(pop, pop);
+      drawOutlinedText('🎉 生日快樂！🎉', 0, 0, portrait ? 32 : short ? 28 : 44, '#ffd23f');
+      ctx.restore();
+      const rw = Math.min(w - 24, portrait ? 370 : 560), rh = portrait ? 56 : short ? 40 : 62;
+      const y1 = S.t + (portrait ? 92 : short ? 52 : 86), y2 = y1 + rh + (short ? 8 : 12);
+      const ribbon = (y, col, dark, fromLeft, big, small) => {
+        const kk = clamp((t - 2.55) / 0.45, 0, 1), e2 = 1 - Math.pow(1 - kk, 3);
+        const x = w / 2 - rw / 2 + (fromLeft ? -1 : 1) * (1 - e2) * (w + rw);
+        const notch = rh * 0.35;
+        ctx.fillStyle = dark;
+        ctx.beginPath(); ctx.moveTo(x - 14, y + 8); ctx.lineTo(x + 20, y + 8); ctx.lineTo(x + 20, y + rh + 8); ctx.lineTo(x - 14, y + rh + 8); ctx.lineTo(x - 14 + notch, y + rh / 2 + 8); ctx.closePath(); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(x + rw + 14, y + 8); ctx.lineTo(x + rw - 20, y + 8); ctx.lineTo(x + rw - 20, y + rh + 8); ctx.lineTo(x + rw + 14, y + rh + 8); ctx.lineTo(x + rw + 14 - notch, y + rh / 2 + 8); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = OUTLINE; ctx.fillRect(x - 3, y - 3, rw + 6, rh + 6);
+        ctx.fillStyle = col; ctx.fillRect(x, y, rw, rh);
+        ctx.fillStyle = 'rgba(255,255,255,0.25)'; ctx.fillRect(x, y, rw, 4);
+        ctx.fillStyle = 'rgba(255,255,255,0.18)'; for (let i = 0; i < 6; i++) ctx.fillRect(x + 10 + i * (rw - 20) / 5 - 2, y + rh - 8, 4, 4);
+        drawOutlinedText(big, x + rw / 2, y + rh / 2 - (small ? 6 : 0), portrait ? 21 : short ? 17 : 26, '#fff');
+        if (small && !short) drawOutlinedText(small, x + rw / 2, y + rh / 2 + 15, 11, '#fff3b0');
+      };
+      ribbon(y1, '#2f9a3a', '#1e6a24', true, `🎂 ${CONFIG.names.heroBday} ${CONFIG.names.hero} 生日快樂！`, '偷走跨日神鐘的壽星');
+      ribbon(y2, '#d0405a', '#9a2a3e', false, `🎂 ${CONFIG.names.bossBday} ${CONFIG.names.boss} 生日快樂！`, '終於等到 00:00:00 的壽星');
+      // 名牌
+      drawOutlinedText(`${CONFIG.names.hero} ${CONFIG.names.heroBday}`, hx + hz.w * s / 2, groundY + 24, 14, '#9ee06a');
+      drawOutlinedText(`${CONFIG.names.boss} ${CONFIG.names.bossBday}`, bx + bz.w * s / 2, groundY + 24, 14, '#ff9a8a');
+    }
+    // 彩帶
     for (const p of this.parts) { ctx.save(); ctx.translate(p.x + Math.sin(t * 3 + p.ph) * 8, p.y); ctx.rotate(t * 4 + p.ph); ctx.fillStyle = p.col; ctx.fillRect(-4, -2.5, 8, 5); ctx.restore(); }
-    const short = h < 450, s = short ? 1.2 : w < 500 ? 1.6 : 2.2;
-    drawOutlinedText('🎂 生日快樂！🎂', w / 2, h * 0.12, short ? 28 : 40, '#ffd23f');
-    const hz = Sprites.size('hero_0'), bz = Sprites.size('boss'), base = h * (short ? 0.62 : 0.58);
-    const hx = w / 2 - hz.w * s - 24, hy = base - hz.h * s - Math.abs(Math.sin(t * 5)) * 10;
-    Sprites.draw(ctx, 'hero_0', hx, hy, s); drawHat(ctx, 'hero', hx, hy, s);
-    const bx = w / 2 + 24, by = base - bz.h * s - Math.abs(Math.sin(t * 5 + 1)) * 10;
-    FX.bossAura(ctx, bx + BOSS_CENTER[0] * s, by + BOSS_CENTER[1] * s, s * BOSS_AURA, t, false, 'back');
-    Sprites.draw(ctx, 'boss', bx, by, s); drawHat(ctx, 'boss', bx, by, s);
-    FX.bossAura(ctx, bx + BOSS_CENTER[0] * s, by + BOSS_CENTER[1] * s, s * BOSS_AURA, t, false, 'front');
-    drawOutlinedText(`${CONFIG.names.hero} ${CONFIG.names.heroBday}`, w / 2 - hz.w * s / 2 - 24, base + 18, 15, '#9ee06a');
-    drawOutlinedText(`${CONFIG.names.boss} ${CONFIG.names.bossBday}`, w / 2 + 24 + bz.w * s / 2, base + 18, 15, '#ff9a8a');
-    drawOutlinedText(CONFIG.endingMessage, w / 2, base + 54, short ? 18 : 24, '#fff');
-    const diffLabel = CONFIG.difficulty[this.p.diff].label;
-    drawOutlinedText(`${diffLabel}・通關 ${fmtTime(this.p.time)}${this.p.isBest ? '・新紀錄！' : this.p.best > 1 ? `・最佳 ${fmtTime(this.p.best)}` : ''}`, w / 2, base + 84, 13, '#ffd23f');
-    const bw = Math.min(240, w * 0.6);
-    menuButton(w / 2 - bw / 2, Math.min(h - Safe.b - 70, base + 108), bw, 50, '🎉 再玩一次', '#e8742a', () => Game.setState('TITLE'));
+    // 成績與按鈕
+    if (t > 4.2) {
+      const a = clamp((t - 4.2) / 0.5, 0, 1);
+      ctx.globalAlpha = a;
+      const my = short ? h - S.b - 64 : groundY + (portrait ? 64 : 58);
+      if (!short) drawOutlinedText(CONFIG.endingMessage, w / 2, my, portrait ? 18 : 22, '#fff');
+      const diffLabel = CONFIG.difficulty[this.p.diff].label;
+      drawOutlinedText(`${diffLabel}・通關 ${fmtTime(this.p.time)}${this.p.isBest ? '・新紀錄！' : this.p.best > 1 ? `・最佳 ${fmtTime(this.p.best)}` : ''}`, w / 2, my + (short ? 0 : 30), 13, '#ffd23f');
+      const bw = Math.min(240, w * 0.6);
+      menuButton(w / 2 - bw / 2, Math.min(h - S.b - 62, my + (short ? 14 : 52)), bw, 48, '🎉 再玩一次', '#e8742a', () => Game.setState('TITLE'));
+      ctx.globalAlpha = 1;
+    } else if (t > 1) drawOutlinedText('點一下跳過 ▶', w - S.r - 60, h - S.b - 20, 12, 'rgba(255,255,255,0.7)');
+    if (t < 0.8) { ctx.fillStyle = `rgba(255,255,255,${1 - t / 0.8})`; ctx.fillRect(0, 0, w, h); }
   },
-  tap(x, y) { const b = hit(x, y); if (b) b.onTap(); },
-  key(c) { if (c === 'Enter') Game.setState('TITLE'); },
+  tap(x, y) { if (this.t < 4.2) { this.t = 4.2; return; } const b = hit(x, y); if (b) b.onTap(); },
+  key(c) { if (c === 'Enter') { if (this.t < 4.2) this.t = 4.2; else Game.setState('TITLE'); } },
 };
 
 /* =====================================================================
@@ -2828,7 +3105,8 @@ function startGallery() {
   g = section('道具與特效');
   const I = 110;
   card(g, '愛心（補血）', I, I, (x, t, w, h) => { groundBg(x, w, h); const [px, py] = center('heart', w, h, 4); Sprites.draw(x, 'heart', px, py - Math.sin(t * 4) * 4, 4); });
-  card(g, '時鐘發條（大招充能）', I, I, (x, t, w, h) => { groundBg(x, w, h); const [px, py] = center('spring', w, h, 4); x.globalAlpha = Math.floor(t * 4) % 6 === 0 ? 0.4 : 1; Sprites.draw(x, 'spring', px, py - Math.sin(t * 4) * 4, 4); x.globalAlpha = 1; }, '上發條的鑰匙；快消失時會閃爍');
+  card(g, '新台幣 100 元', I, I, (x, t, w, h) => { groundBg(x, w, h); const [px, py] = center('cash', w, h, 3); Sprites.draw(x, 'cash', px, py - Math.sin(t * 4) * 4, 3); }, '存起來換技能');
+  card(g, '技能圖示', 200, I, (x, t, w, h) => { groundBg(x, w, h); ['speed', 'giant', 'bomb'].forEach((id, i) => Sprites.draw(x, 'sk_' + id, 14 + i * 62, 26, 2.6)); }, '⚡加速 $500・💪巨大化 $800・💣炸彈 $1200');
   card(g, '拉炮彩帶子彈', 200, I, (x, t, w, h) => {
     groundBg(x, w, h);
     for (let k = 0; k < 5; k++) { const a = -0.26 + k * 0.13, d = ((t * 160) % 150) + 20; FX.streamer(x, 20 + Math.cos(a) * d, h / 2 + Math.sin(a) * d * 2.2, a, t, k); }
@@ -2865,6 +3143,7 @@ function startGallery() {
 
 /* ---------- 啟動 ---------- */
 buildSprites();
+NPC.load();
 if (PARAMS.gallery) startGallery(); else startGame();
 </script>
 </body>
