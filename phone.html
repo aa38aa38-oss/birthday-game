@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>手機畫面模擬器</title>
+<style>
+  :root { --bg: #2b1a12; --panel: #3a281c; --line: #6a4a32; --text: #fff; --sub: #e8c9a0; --accent: #ff9a3c; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font-family: "PingFang TC", "Microsoft JhengHei", "Noto Sans TC", sans-serif; }
+  body { display: flex; flex-direction: column; }
+  header { padding: 12px 16px 4px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: center; }
+  h1 { font-size: 17px; margin: 0 8px 0 0; color: #ffd23f; }
+  .group { display: flex; gap: 4px; background: var(--panel); border: 2px solid var(--line); border-radius: 6px; padding: 3px; }
+  button { font: inherit; font-size: 13px; color: var(--text); background: transparent; border: 0; border-radius: 4px; padding: 6px 10px; cursor: pointer; }
+  button.on { background: var(--accent); color: #2b1a12; font-weight: 700; }
+  button:focus-visible { outline: 2px solid #ffd23f; }
+  .tip { text-align: center; font-size: 12px; color: var(--sub); padding: 2px 16px 6px; }
+  .stage { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+  .phone { position: relative; background: #121014; border-radius: 52px; padding: 14px; box-shadow: 0 20px 60px rgba(0,0,0,.6), inset 0 0 0 2px #3a3440; transform-origin: center center; }
+  .phone.land { border-radius: 52px; }
+  .screen { position: relative; overflow: hidden; border-radius: 38px; background: #000; display: flex; flex-direction: column; }
+  .notch { position: absolute; z-index: 3; background: #000; border-radius: 20px; pointer-events: none; }
+  .linebar { flex: 0 0 auto; height: 44px; background: #f4f4f4; color: #222; display: flex; align-items: center; gap: 10px; padding: 0 12px; font-size: 13px; }
+  .linebar[hidden] { display: none; }
+  .linebar .x { font-size: 20px; }
+  .linebar .t { flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  iframe { border: 0; display: block; flex: 1 1 auto; width: 100%; background: #2b1a12; }
+  .side { position: absolute; background: #2a2630; border-radius: 3px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>📱 手機畫面模擬器</h1>
+  <div class="group" id="device"></div>
+  <div class="group" id="orient">
+    <button data-v="portrait" class="on">直式</button>
+    <button data-v="landscape">橫式</button>
+  </div>
+  <div class="group" id="opts">
+    <button data-v="line">LINE 瀏覽器列</button>
+    <button data-v="reload">↻ 重新開始</button>
+  </div>
+  <div class="group" id="jump">
+    <button data-v="1" class="on">從頭</button>
+    <button data-v="2">Phase 2</button>
+    <button data-v="3">Boss 戰</button>
+  </div>
+</header>
+<div class="tip">用滑鼠點「左半邊拖曳」當搖桿、按住右下「拉炮鈕」射擊（拖曳可瞄準）；也可以用鍵盤 WASD 移動、Q 換武器。</div>
+<div class="stage" id="stage">
+  <div class="phone" id="phone">
+    <div class="side" style="left:-4px;top:120px;width:4px;height:60px"></div>
+    <div class="side" style="right:-4px;top:160px;width:4px;height:90px"></div>
+    <div class="screen" id="screen">
+      <div class="notch" id="notch"></div>
+      <div class="linebar" id="linebar" hidden><span class="x">×</span><span class="t">請問巧馨，今天要排擠誰?</span><span>⋯</span></div>
+      <iframe id="game" title="遊戲畫面" allow="autoplay"></iframe>
+    </div>
+  </div>
+</div>
+<script>
+'use strict';
+/* 機型：可視區寬高（CSS px）與瀏海安全區 */
+const DEVICES = {
+  iphone15: { name: 'iPhone 15', w: 393, h: 852, notch: true, safeTop: 59, safeBottom: 34 },
+  iphoneSE: { name: 'iPhone SE', w: 375, h: 667, notch: false, safeTop: 20, safeBottom: 0 },
+  android:  { name: 'Android', w: 360, h: 800, notch: false, safeTop: 24, safeBottom: 16 },
+};
+const state = { device: 'iphone15', orient: 'portrait', line: false, phase: '1' };
+try { Object.assign(state, JSON.parse(localStorage.getItem('phoneSim') || '{}')); } catch (e) { /* 無痕模式 */ }
+
+const $ = id => document.getElementById(id);
+const devBox = $('device');
+for (const [k, d] of Object.entries(DEVICES)) {
+  const b = document.createElement('button'); b.dataset.v = k; b.textContent = d.name; devBox.appendChild(b);
+}
+function setOn(group, v) { group.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === v)); }
+
+function apply(reload) {
+  try { localStorage.setItem('phoneSim', JSON.stringify(state)); } catch (e) { /* */ }
+  const d = DEVICES[state.device], land = state.orient === 'landscape';
+  const w = land ? d.h : d.w, h = land ? d.w : d.h;
+  setOn(devBox, state.device); setOn($('orient'), state.orient); setOn($('jump'), state.phase);
+  $('opts').querySelector('[data-v="line"]').classList.toggle('on', state.line);
+  const screen = $('screen'), notch = $('notch'), lineBar = $('linebar');
+  screen.style.width = w + 'px'; screen.style.height = h + 'px';
+  lineBar.hidden = !state.line;
+  // 安全區：直式在上下，橫式在左右（瀏海那側）
+  let safe = [0, 0, 0, 0];
+  if (land) safe = [0, d.notch ? 47 : 0, d.safeBottom ? 21 : 0, d.notch ? 47 : 0];
+  else safe = [state.line ? 0 : d.safeTop, 0, d.safeBottom, 0];
+  if (d.notch) {
+    Object.assign(notch.style, land
+      ? { width: '32px', height: '120px', left: '10px', top: '50%', transform: 'translateY(-50%)', display: state.line ? 'none' : 'block' }
+      : { width: '120px', height: '34px', top: '10px', left: '50%', transform: 'translateX(-50%)', display: state.line ? 'none' : 'block' });
+  } else notch.style.display = 'none';
+  if (state.line && !land) lineBar.style.paddingTop = '0';
+  const src = `index.html?touch=1&safe=${safe.join(',')}${state.phase !== '1' ? '&phase=' + state.phase : ''}`;
+  const f = $('game');
+  if (reload || f.dataset.src !== src) { f.dataset.src = src; f.src = src; }
+  fit();
+}
+function fit() {
+  const phone = $('phone'), stage = $('stage');
+  phone.style.transform = 'none';
+  const r = phone.getBoundingClientRect(), sw = stage.clientWidth - 24, sh = stage.clientHeight - 16;
+  const k = Math.min(1, sw / r.width, sh / r.height);
+  phone.style.transform = `scale(${k})`;
+}
+devBox.addEventListener('click', e => { const v = e.target.dataset.v; if (v) { state.device = v; apply(); } });
+$('orient').addEventListener('click', e => { const v = e.target.dataset.v; if (v) { state.orient = v; apply(); } });
+$('jump').addEventListener('click', e => { const v = e.target.dataset.v; if (v) { state.phase = v; apply(true); } });
+$('opts').addEventListener('click', e => {
+  const v = e.target.dataset.v;
+  if (v === 'line') { state.line = !state.line; apply(true); }
+  if (v === 'reload') apply(true);
+});
+window.addEventListener('resize', fit);
+apply(true);
+</script>
+</body>
+</html>
