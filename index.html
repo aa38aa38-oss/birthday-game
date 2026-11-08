@@ -65,13 +65,16 @@ const CONFIG = {
     boss: ['你逃不掉的！', '我要過生日！！', '把鐘交出來！', '群主說話你聽到沒！'],
     tubbies: '出來吧！丁丁、拉拉、小波！一起排擠他！',
     rage: '我只差一秒啊！！！',
+    early: ['這麼快就打完了？！', '可惡，排擠兵不夠用了！', '你、你怎麼打這麼快！'],
   },
   endingMessage: '迪西 & 巧馨 生日快樂！🎂',
   /* 迪西撿到錢時跳出來的開心對話 */
   heroLines: { cash: ['超爽的撿到100塊！', '超爽的撿到100塊！', '超爽的撿到100塊！', '100塊！今天發財啦！', '撿到錢錢～壽星福利！'] },
+  /* 第一、二關：打倒 pXKills 個 或 撐滿 stageTime 秒，哪個先達成就過關 */
+  stageTime: 50,
   difficulty: {
-    easy: { label: '🎂 壽星模式', desc: '簡單・死掉可從本階段重來', playerHp: 150, enemyHp: 0.8, enemyDmg: 0.6, spawn: 0.75, bossHp: 1100, checkpoint: true },
-    hard: { label: '😈 排擠模式', desc: '困難・死掉從頭開始',       playerHp: 100, enemyHp: 1.2, enemyDmg: 1.0, spawn: 1.2,  bossHp: 1800, checkpoint: false },
+    easy: { label: '🎂 壽星模式', desc: '簡單・死掉可從本階段重來', playerHp: 150, enemyHp: 0.8, enemyDmg: 0.6, spawn: 0.75, bossHp: 1100, checkpoint: true, p1Kills: 20, p2Kills: 15 },
+    hard: { label: '😈 排擠模式', desc: '困難・死掉從頭開始',       playerHp: 100, enemyHp: 1.2, enemyDmg: 1.0, spawn: 1.2,  bossHp: 1800, checkpoint: false, p1Kills: 30, p2Kills: 25 },
   },
 };
 
@@ -700,7 +703,9 @@ const DIGITS = {
   '6': ['111', '100', '111', '101', '111'], '7': ['111', '001', '010', '010', '010'],
   '8': ['111', '101', '111', '101', '111'], '9': ['111', '101', '111', '001', '111'],
   ':': ['0', '1', '0', '1', '0'],
+  '/': ['001', '001', '010', '100', '100'],
 };
+const CLOCK_TXT = () => `${CONFIG.names.heroBday} 23:59:59`;
 function drawPixelText(ctx, str, x, y, s, col) {
   ctx.fillStyle = col;
   let cx = x;
@@ -804,13 +809,16 @@ const UI = {
     const s = Math.max(2, Math.floor(r / 8)), sz = Sprites.size('clockIcon');
     Sprites.draw(ctx, 'clockIcon', cx - (sz.w * s) / 2, cy - (sz.h * s) / 2, s);
   },
-  frozenClock(ctx, x, y, s, t, text = '23:59:59') {
+  frozenClock(ctx, x, y, s, t, text = CLOCK_TXT()) {
+    // 文字可帶日期，例如「11/28 23:59:59」：日期不閃爍（琥珀色），時間閃爍（紅色）
     const tw = pixelTextWidth(text, s), pad = s * 2;
     ctx.fillStyle = OUTLINE; ctx.fillRect(x - pad - s, y - pad - s, tw + pad * 2 + s * 2, 5 * s + pad * 2 + s * 2);
     ctx.fillStyle = '#2a0f0a'; ctx.fillRect(x - pad, y - pad, tw + pad * 2, 5 * s + pad * 2);
-    const blink = Math.floor(t * 2) % 2 === 0;
-    drawPixelText(ctx, '88:88:88', x, y, s, '#3a1810');
-    drawPixelText(ctx, text, x, y, s, blink ? '#ff4a3a' : '#9c2a20');
+    const blink = Math.floor(t * 2) % 2 === 0, sp = text.lastIndexOf(' ');
+    const date = sp >= 0 ? text.slice(0, sp + 1) : '', time = text.slice(sp + 1), tx = x + (date ? pixelTextWidth(date, s) + s : 0);
+    if (date) drawPixelText(ctx, date, x, y, s, '#ffb03a');
+    drawPixelText(ctx, '88:88:88', tx, y, s, '#3a1810');
+    drawPixelText(ctx, time, tx, y, s, blink ? '#ff4a3a' : '#9c2a20');
     return tw + pad * 2;
   },
   joystick(ctx, cx, cy, r, kx, ky) {
@@ -1398,7 +1406,7 @@ function newWorld(diffKey) {
   W = {
     diffKey, diff, time: 0, stage: 'p1', stageT: 0, enemies: [], bullets: [], drops: [], parts: [], texts: [], cakes: [], party: [],
     booms: [], beams: [], flashes: [], lock: null,
-    boss: null, timeStop: 0, shake: 0, spawnT: 2.5, kills: 0, banner: null, overlay: null, deathT: 0, flashT: 0, ebCount: 0,
+    boss: null, timeStop: 0, shake: 0, spawnT: 2.5, kills: 0, stageKills: 0, banner: null, overlay: null, deathT: 0, flashT: 0, ebCount: 0,
     lastKnown: { x: WORLD_W / 2, y: WORLD_H / 2 }, checkpoint: null, clearTime: 0, lowFx: false, vBell: 0, songStarted: false, songLen: 0,
     cutin: null, cutinCd: 0, cutinIdx: 0, lowHpCd: 0, supplyT: 14, bossTauntT: 12,
     cashT: 2, tip: null, cashTip: false, heroCd: 4, skillTips: {},
@@ -1417,7 +1425,7 @@ function restoreCheckpoint() {
   P = makePlayer(W.diff); P.money = cp.money || 0; P.invuln = 1.5;
   Object.assign(W, { enemies: [], bullets: [], drops: [], parts: [], texts: [], cakes: [], booms: [], beams: [], flashes: [], boss: null, timeStop: 0,
     overlay: null, deathT: 0, flashT: 0, banner: null, cutin: null, cutinCd: 3, lock: null, tip: null, cashT: 2,
-    time: cp.time, stage: cp.stage, stageT: 0, spawnT: 1.5, supplyT: 6, lastKnown: { x: P.x, y: P.y } });
+    time: cp.time, stage: cp.stage, stageT: 0, stageKills: 0, spawnT: 1.5, supplyT: 6, lastKnown: { x: P.x, y: P.y } });
   W.cutinIdx = CONFIG.cutins.timed.findIndex(c => c[0] > cp.time); if (W.cutinIdx < 0) W.cutinIdx = CONFIG.cutins.timed.length;
   Cam.snap = true;
   if (cp.stage === 'bossIntro') { W.boss = makeBoss(); Music.stop(); }
@@ -1443,7 +1451,7 @@ function updateCutins(dt) {
   if (W.cutin) { W.cutin.t += dt; if (W.cutin.t > W.cutin.dur) W.cutin = null; }
   if (W.tip) { W.tip.t += dt; if (W.tip.t > W.tip.dur) W.tip = null; }
   const C = CONFIG.cutins;
-  if ((W.stage === 'p1' || W.stage === 'p2') && W.cutinIdx < C.timed.length && W.time >= C.timed[W.cutinIdx][0]) { cutin(C.timed[W.cutinIdx][1], true); W.cutinIdx++; }
+  if ((W.stage === 'p1' || W.stage === 'p2') && W.cutinIdx < C.timed.length && storyTime() >= C.timed[W.cutinIdx][0]) { cutin(C.timed[W.cutinIdx][1], true); W.cutinIdx++; }
   if (W.stage === 'boss') { W.bossTauntT -= dt; if (W.bossTauntT <= 0) { W.bossTauntT = 14; cutin(pick(C.boss), false, W.boss && W.boss.stage === 3); } }
   if (!P.dead && P.hp < P.maxHp * 0.3 && W.lowHpCd <= 0 && canAct()) { W.lowHpCd = 25; cutin(pick(C.lowHp)); }
 }
@@ -1778,6 +1786,7 @@ function damageEnemy(e, dmg, b, ox, oy) {
 }
 function killEnemy(e, quiet) {
   e.alive = false; W.kills++;
+  if (!quiet && (W.stage === 'p1' || W.stage === 'p2')) W.stageKills++;
   burst(e.x, e.y - 20, quiet ? 8 : e.d.tubby ? 30 : 14, { up: 100 });
   if (quiet) return;
   Snd.play('enemyDie');
@@ -1884,14 +1893,14 @@ function updateEnemies(edt, dt) {
  * ===================================================================== */
 function pickSpawn() { const ok = Arena.spawns.filter(s => Math.hypot(s.x - P.x, s.y - P.y) >= 300); return ok.length ? pick(ok) : null; }
 function spawnInterval() {
-  const p2 = W.stage === 'p2', u = clamp(p2 ? (W.time - 50) / 50 : W.time / 50, 0, 1);
+  const p2 = W.stage === 'p2', u = clamp(W.stageT / CONFIG.stageTime, 0, 1);
   return lerp(p2 ? 1.2 : 1.7, p2 ? 0.7 : 0.85, u) / W.diff.spawn;
 }
 function spawnWave() {
   const cap = W.diffKey === 'hard' ? 55 : 40;
   if (W.enemies.length >= cap) return;
   const sp = pickSpawn(); if (!sp) return;
-  const p2 = W.stage === 'p2', t = W.time;
+  const p2 = W.stage === 'p2', t = W.stageT;
   const n = Math.min(cap - W.enemies.length, 1 + Math.floor(Math.random() * (p2 ? 3 : Math.min(3, 1 + t / 20))));
   for (let i = 0; i < n; i++) {
     let type = 'mob'; const r = Math.random();
@@ -1901,8 +1910,8 @@ function spawnWave() {
   }
 }
 function enterStage(s) {
-  W.stage = s; W.stageT = 0;
-  if (s === 'p2') { banner('精英群友上線！', 'Phase 2・小心衝撞的群主'); Snd.play('phase'); saveCheckpoint(); }
+  W.stage = s; W.stageT = 0; W.stageKills = 0;
+  if (s === 'p2') { W.cutinIdx = Math.max(W.cutinIdx, CONFIG.cutins.timed.findIndex(c => c[0] > CONFIG.stageTime)); banner('精英群友上線！', 'Phase 2・小心衝撞的群主'); Snd.play('phase'); saveCheckpoint(); }
   else if (s === 'bossIntro') {
     for (const e of W.enemies) { killEnemy(e, true); floatText(e.x, e.y - 50, '已退出群組', '#fff', 14); }
     W.enemies.length = 0; clearEnemyBullets(); W.timeStop = 0;
@@ -1912,11 +1921,19 @@ function enterStage(s) {
   else if (s === 'bossDeath') { Music.stop(); }
   else if (s === 'victory') setupVictory();
 }
+function stageGoal() { return W.stage === 'p2' ? W.diff.p2Kills : W.diff.p1Kills; }
+/* 劇情時間軸（插話用）：第一關 0–50、第二關 50–100，不受提早過關影響 */
+function storyTime() { return W.stage === 'p2' ? CONFIG.stageTime + W.stageT : W.stageT; }
 function updateDirector(dt, ts) {
   if (W.stage === 'p1' || W.stage === 'p2' || W.stage === 'boss') W.time += dt;
   if (P.dead) return;
-  if (W.stage === 'p1' && W.time >= 50) enterStage('p2');
-  else if (W.stage === 'p2' && W.time >= 100) enterStage('bossIntro');
+  if (W.stage === 'p1' || W.stage === 'p2') {
+    const goal = stageGoal(), byKills = W.stageKills >= goal;
+    if (byKills || W.stageT >= CONFIG.stageTime) {
+      if (byKills) { cutin(pick(CONFIG.cutins.early), true); W.cutinCd = 3; }
+      enterStage(W.stage === 'p1' ? 'p2' : 'bossIntro');
+    }
+  }
   if (W.stage === 'p1' || W.stage === 'p2') { W.spawnT -= dt * ts; if (W.spawnT <= 0) { spawnWave(); W.spawnT = spawnInterval(); } }
   if (W.stage === 'p1' || W.stage === 'p2' || W.stage === 'boss') {
     W.cashT -= dt; if (W.cashT <= 0) { spawnAmbientCash(); W.cashT = 3.2; }
@@ -2485,10 +2502,14 @@ function renderHUD() {
   drawOutlinedText(`擊退 ${W.kills}`, x0 + 88, y0 + 35, 13, '#fff', 'left');
   drawWeaponPanel(x0, y0 + 50);
   // 直式窄螢幕：時鐘靠右放在暫停鈕下方，避免和左上的血條／武器欄重疊
-  const cs = narrow ? 3 : 4, cw = pixelTextWidth('23:59:59', cs);
+  const cs = narrow ? 3 : 4, cw = pixelTextWidth(CLOCK_TXT(), cs);
   const cx = narrow ? w - s.r - cw - 18 : w / 2 - cw / 2, cy = narrow ? s.t + 66 : s.t + 16;
   UI.frozenClock(ctx, cx, cy, cs, t);
   if (STAGE_LABEL[W.stage]) drawOutlinedText(STAGE_LABEL[W.stage], narrow ? w - s.r - 12 : w / 2, cy + 5 * cs + 20, 12, '#ffd23f', narrow ? 'right' : 'center');
+  if (W.stage === 'p1' || W.stage === 'p2') {
+    const left = Math.max(0, Math.ceil(CONFIG.stageTime - W.stageT));
+    drawOutlinedText(`打倒 ${Math.min(W.stageKills, stageGoal())}/${stageGoal()}・剩 ${left} 秒`, narrow ? w - s.r - 12 : w / 2, cy + 5 * cs + 38, narrow ? 13 : 14, '#fff', narrow ? 'right' : 'center');
+  }
   const b = W.boss;
   if (b && (W.stage === 'boss' || (W.stage === 'bossIntro' && b.landed))) {
     const bbw = narrow ? w - s.l - s.r - 28 : Math.min(420, w * 0.7);
@@ -2627,7 +2648,7 @@ function renderVictoryUI() {
   const w = view.w, h = view.h, t = W.stageT, R = Math.min(w, h) * 0.14, cy = R + 30 + Safe.t;
   const after = t >= 1.2;
   drawBigClock(w / 2, cy, R, after ? 60 : 59, 0.95);
-  const cs = w < 500 ? 4 : 5, txt = after ? '00:00:00' : '23:59:59', cw = pixelTextWidth(txt, cs);
+  const cs = w < 500 ? 4 : 5, txt = after ? `${CONFIG.names.bossBday} 00:00:00` : CLOCK_TXT(), cw = pixelTextWidth(txt, cs);
   UI.frozenClock(ctx, w / 2 - cw / 2, cy + R + 18, cs, after ? 0 : t, txt);
   if (after) {
     const k = Math.min(1, (t - 1.2) * 3);
@@ -2721,7 +2742,7 @@ Game.states.TITLE = {
     drawCenteredText('VS', cy, 22, '#fff');
     const bw = Math.min(260, view.w * 0.42), bh = 54, gap = 14;
     const by = Math.min(view.h - bh - 56, base + 50);
-    UI.frozenClock(ctx, view.w / 2 - pixelTextWidth('23:59:59', 3) / 2, Math.min(base + 10, by - 32), 3, t);
+    UI.frozenClock(ctx, view.w / 2 - pixelTextWidth(CLOCK_TXT(), 3) / 2, Math.min(base + 10, by - 32), 3, t);
     const total = bw * 2 + gap;
     ['easy', 'hard'].forEach((k, i) => {
       const d = CONFIG.difficulty[k], x = view.w / 2 - total / 2 + i * (bw + gap);
@@ -2745,9 +2766,9 @@ Game.states.TITLE = {
 };
 
 const INTRO_CARDS = [
-  { text: '11/28 晚上 23:59:58', clock: '23:59:58' },
+  { text: '11/28 晚上 23:59:58', clock: '11/28 23:59:58' },
   { text: `壽星${CONFIG.names.hero}偷走了世界的「跨日神鐘」！`, hero: true },
-  { text: '時間從此停在 23:59:59……', clock: '23:59:59' },
+  { text: '時間從此停在 23:59:59……', clock: '11/28 23:59:59' },
   { text: `差一秒就生日的${CONFIG.names.boss}，徹底爆氣了。`, boss: true },
   { text: `「全體成員注意：今天排擠${CONFIG.names.hero}！」`, chat: true },
   { text: `撐過排擠大軍、打倒${CONFIG.names.boss}，讓時間前進！`, hero: true, boss: true },
@@ -2763,7 +2784,7 @@ Game.states.INTRO = {
     const c = INTRO_CARDS[Math.min(this.i, INTRO_CARDS.length - 1)], w = view.w, h = view.h, a = Math.min(1, this.t * 3);
     ctx.globalAlpha = a;
     const midY = h * 0.42, s = h < 450 ? 1.2 : 2;
-    if (c.clock) { const cs = w < 500 ? 6 : 8, cw = pixelTextWidth(c.clock, cs); UI.frozenClock(ctx, w / 2 - cw / 2, midY - 20, cs, c.clock === '23:59:58' ? 0 : Game.t, c.clock); }
+    if (c.clock) { const cs = w < 500 ? 6 : 8, cw = pixelTextWidth(c.clock, cs); UI.frozenClock(ctx, w / 2 - cw / 2, midY - 20, cs, c.clock.endsWith('23:59:58') ? 0 : Game.t, c.clock); }
     if (c.hero) { const z = Sprites.size('hero_0'); Sprites.draw(ctx, 'hero_0', (c.boss ? w / 2 - z.w * s - 30 : w / 2 - z.w * s / 2), midY + 40 - z.h * s, s); }
     if (c.boss) {
       const z = Sprites.size('boss'), bx = c.hero ? w / 2 + 30 : w / 2 - z.w * s / 2, by = midY + 40 - z.h * s;
