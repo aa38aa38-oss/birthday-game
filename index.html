@@ -2962,9 +2962,42 @@ Game.states.PLAY = {
  * 破關動畫：夜空煙火 → 蛋糕升起 → 兩位壽星走到蛋糕兩側 → 派對帽落下
  *          → 同時打出「11/28 迪西生日快樂」「11/29 巧馨生日快樂」兩條緞帶 → 成績與再玩一次
  * ===================================================================== */
+/* 結局的排行榜按鈕：hot 時會發光、脈動、閃星星、左右箭頭彈跳 */
+function drawLbButton(cx, y, bw, bh, label, hot, t, onTap) {
+  const x = cx - bw / 2, k = hot ? 1 + 0.05 * Math.sin(t * 6) : 1;
+  if (hot) {
+    const g = ctx.createRadialGradient(cx, y + bh / 2, 10, cx, y + bh / 2, bw * 0.75);
+    g.addColorStop(0, `rgba(255,220,90,${0.45 + 0.2 * Math.sin(t * 6)})`); g.addColorStop(1, 'rgba(255,220,90,0)');
+    ctx.fillStyle = g; ctx.fillRect(cx - bw, y - bh, bw * 2, bh * 3);
+  }
+  ctx.save(); ctx.translate(cx, y + bh / 2); ctx.scale(k, k); ctx.translate(-cx, -(y + bh / 2));
+  ctx.fillStyle = OUTLINE; ctx.fillRect(x - 4, y - 2, bw + 8, bh + 8);
+  ctx.fillStyle = hot ? '#ffb21e' : '#2f7a9a'; ctx.fillRect(x, y, bw, bh);
+  ctx.fillStyle = hot ? '#ffd86a' : 'rgba(255,255,255,0.25)'; ctx.fillRect(x, y, bw, 6);
+  ctx.fillStyle = hot ? '#d0820a' : 'rgba(0,0,0,0.2)'; ctx.fillRect(x, y + bh - 6, bw, 6);
+  if (hot) {   // 斜向反光掃過
+    const sx = x + ((t * 160) % (bw + 120)) - 60;
+    ctx.save(); ctx.beginPath(); ctx.rect(x, y, bw, bh); ctx.clip();
+    ctx.fillStyle = 'rgba(255,255,255,0.45)'; ctx.beginPath(); ctx.moveTo(sx, y); ctx.lineTo(sx + 22, y); ctx.lineTo(sx + 2, y + bh); ctx.lineTo(sx - 20, y + bh); ctx.fill();
+    ctx.restore();
+  }
+  drawOutlinedText(label, cx, y + bh / 2 + 1, hot ? 21 : 18, '#fff');
+  ctx.restore();
+  if (hot) {
+    const bob = Math.abs(Math.sin(t * 5)) * 10;
+    ctx.font = UI.font(24); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('👉', x - 26 - bob, y + bh / 2); ctx.fillText('👈', x + bw + 26 + bob, y + bh / 2); ctx.textAlign = 'left';
+    for (let i = 0; i < 4; i++) {   // 按鈕周圍的閃爍星星
+      const ph = t * 2 + i * 1.57, px = cx + Math.cos(ph) * (bw / 2 + 8), py = y + bh / 2 + Math.sin(ph) * (bh / 2 + 10), sz = 3 + 2 * Math.abs(Math.sin(t * 8 + i));
+      ctx.fillStyle = '#fff6c0'; ctx.fillRect(px - sz, py - 1, sz * 2, 2); ctx.fillRect(px - 1, py - sz, 2, sz * 2);
+    }
+  }
+  clickables.push({ x: x - 4, y: y - 4, w: bw + 8, h: bh + 12, onTap: () => { Snd.play('click'); onTap(); } });
+}
+
 Game.states.ENDING = {
   enter(p) {
-    LB.submitted = false; LB.close();
+    LB.submitted = false; LB.close(); this.lbBurst = false;
     this.p = p; this.t = 0; this.parts = []; this.fw = []; this.fwT = 0;
     this.stars = Array.from({ length: 80 }, () => [Math.random(), Math.random() * 0.62, Math.random() * 6]);
     Music.stop();
@@ -2995,8 +3028,6 @@ Game.states.ENDING = {
     sky.addColorStop(0, '#120a28'); sky.addColorStop(0.55, '#3a1e4a'); sky.addColorStop(1, '#7a3e3a');
     ctx.fillStyle = sky; ctx.fillRect(0, 0, w, h);
     for (const [sx, sy, ph] of this.stars) { ctx.globalAlpha = 0.35 + 0.65 * Math.abs(Math.sin(t * 2 + ph)); ctx.fillStyle = '#fff'; ctx.fillRect(sx * w, sy * h, 2, 2); }
-    ctx.globalAlpha = 1;
-    for (const f of this.fw) { ctx.globalAlpha = Math.min(1, f.life * 1.4); ctx.fillStyle = f.col; ctx.fillRect(f.x - 2, f.y - 2, 4, 4); }
     ctx.globalAlpha = 1;
     // 地面
     const groundY = Math.round(h * (portrait ? 0.64 : short ? 0.74 : 0.7));
@@ -3049,12 +3080,17 @@ Game.states.ENDING = {
       };
       ribbon(y1, '#2f9a3a', '#1e6a24', true, `🎂 ${CONFIG.names.heroBday} ${CONFIG.names.hero} 生日快樂！`, '偷走跨日神鐘的壽星');
       ribbon(y2, '#d0405a', '#9a2a3e', false, `🎂 ${CONFIG.names.bossBday} ${CONFIG.names.boss} 生日快樂！`, '終於等到 00:00:00 的壽星');
-      // 名牌
-      drawOutlinedText(`${CONFIG.names.hero} ${CONFIG.names.heroBday}`, hx + hz.w * s / 2, groundY + 24, 14, '#9ee06a');
-      drawOutlinedText(`${CONFIG.names.boss} ${CONFIG.names.bossBday}`, bx + bz.w * s / 2, groundY + 24, 14, '#ff9a8a');
+      // 名牌（橫式矮螢幕在成績出現後隱藏，避免和成績文字重疊）
+      if (!(short && t > 4.2)) {
+        drawOutlinedText(`${CONFIG.names.hero} ${CONFIG.names.heroBday}`, hx + hz.w * s / 2, groundY + 24, 14, '#9ee06a');
+        drawOutlinedText(`${CONFIG.names.boss} ${CONFIG.names.bossBday}`, bx + bz.w * s / 2, groundY + 24, 14, '#ff9a8a');
+      }
     }
     // 彩帶
     for (const p of this.parts) { ctx.save(); ctx.translate(p.x + Math.sin(t * 3 + p.ph) * 8, p.y); ctx.rotate(t * 4 + p.ph); ctx.fillStyle = p.col; ctx.fillRect(-4, -2.5, 8, 5); ctx.restore(); }
+    // 煙火（畫在地面之後，按鈕噴出的彩紙才看得到）
+    for (const f of this.fw) { ctx.globalAlpha = Math.min(1, f.life * 1.4); ctx.fillStyle = f.col; ctx.fillRect(f.x - 2, f.y - 2, 4, 4); }
+    ctx.globalAlpha = 1;
     // 成績與按鈕
     if (t > 4.2) {
       const a = clamp((t - 4.2) / 0.5, 0, 1);
@@ -3065,10 +3101,16 @@ Game.states.ENDING = {
       drawOutlinedText(this.p.preview ? '🎬 精彩大結局預覽・打倒巧馨就能看到！' : `${diffLabel}・通關 ${fmtTime(this.p.time)}${this.p.isBest ? '・新紀錄！' : this.p.best > 1 ? `・最佳 ${fmtTime(this.p.best)}` : ''}`, w / 2, my + (short ? 0 : 30), 13, '#ffd23f');
       const by2 = Math.min(h - S.b - 62, my + (short ? 14 : 52));
       if (LB.enabled) {
-        const bw = Math.min(200, (w - 44) / 2), canUp = !this.p.preview && this.p.valid && !this.p.test;
-        menuButton(w / 2 - bw - 6, by2, bw, 48, this.p.preview ? '🏠 回到首頁' : '🎉 再玩一次', '#e8742a', () => Game.setState('TITLE'));
-        if (canUp && !LB.submitted && Math.sin(t * 6) > 0) { ctx.fillStyle = 'rgba(255,210,63,0.35)'; ctx.fillRect(w / 2, by2 - 6, bw + 12, 60); }
-        menuButton(w / 2 + 6, by2, bw, 48, canUp && !LB.submitted ? '🏆 留名上榜' : '🏆 排行榜', '#2f7a9a', () => LB.open(this.p.diff, canUp ? { diff: this.p.diff, time: this.p.time, kills: this.p.kills || 0 } : null));
+        // 只留一顆醒目的排行榜按鈕（回首頁用左上角的「首頁」）
+        const canUp = !this.p.preview && this.p.valid && !this.p.test, hot = canUp && !LB.submitted;
+        const bw = Math.min(260, w * 0.68), bh = 52;
+        if (hot && !this.lbBurst) {   // 按鈕出現時噴一圈彩紙提醒
+          this.lbBurst = true; Snd.play('coin');
+          for (let i = 0; i < 36; i++) { const an = i / 36 * Math.PI * 2, sp = 140 + Math.random() * 90; this.fw.push({ x: w / 2, y: by2 + bh / 2, vx: Math.cos(an) * sp, vy: Math.sin(an) * sp - 60, life: 1.1, col: pick(CONFETTI) }); }
+        }
+        drawLbButton(w / 2, by2, bw, bh, hot ? '🏆 留名上榜！' : '🏆 排行榜', hot, t,
+          () => LB.open(this.p.diff, canUp ? { diff: this.p.diff, time: this.p.time, kills: this.p.kills || 0 } : null));
+        if (hot && by2 + bh + 26 < h - S.b) drawOutlinedText('留下暱稱，挑戰最快通關！', w / 2, by2 + bh + 20, 13, '#ffe58a');
       } else {
         const bw = Math.min(240, w * 0.6);
         menuButton(w / 2 - bw / 2, by2, bw, 48, this.p.preview ? '🏠 回到首頁' : '🎉 再玩一次', '#e8742a', () => Game.setState('TITLE'));
